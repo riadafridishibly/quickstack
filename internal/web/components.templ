@@ -1,0 +1,130 @@
+package web
+
+import "strconv"
+
+const (
+	InputClass           = "input w-full aria-[invalid=true]:input-error"
+	TextareaClass        = "textarea w-full aria-[invalid=true]:textarea-error"
+	ButtonClass          = "btn btn-primary"
+	SecondaryButtonClass = "btn btn-soft"
+	DangerButtonClass    = "btn btn-ghost btn-sm text-error"
+	LinkClass            = "link link-primary link-hover font-medium"
+	// Below sm, cards run to the screen edges, out of the page's px-4.
+	CardClass       = "rounded-box border border-base-300 bg-base-100 max-sm:-mx-4 max-sm:rounded-none max-sm:border-x-0"
+	PaddedCardClass = CardClass + " px-4 py-5 sm:p-6"
+)
+
+// InputAttrs returns the id, name, and the aria attributes that link a
+// control to the error Field renders.
+func InputAttrs(name, errMsg string) templ.Attributes {
+	attrs := templ.Attributes{"id": name, "name": name}
+	if errMsg != "" {
+		attrs["aria-invalid"] = "true"
+		attrs["aria-describedby"] = name + "-error"
+	}
+	return attrs
+}
+
+templ Field(label, name, errMsg string) {
+	<div class="space-y-1.5">
+		<label for={ name } class="block text-sm font-medium">{ label }</label>
+		{ children... }
+		if errMsg != "" {
+			<p id={ name + "-error" } class="text-sm text-error">{ errMsg }</p>
+		}
+	</div>
+}
+
+// PageCount says which rows of how many the page shows, such as
+// "Showing 51–100 of 3,989 variants". It is empty when everything fits on
+// one page.
+templ PageCount(p Page, noun string) {
+	if p.Last() > 1 {
+		<p class="mb-2 text-sm tabular-nums opacity-70">Showing { Count(p.First()) }–{ Count(p.End()) } of { Count(p.Total) } { noun }</p>
+	}
+}
+
+// Pager links to the other pages of a list, and is empty when everything
+// fits on one page. target is the id of the element that holds the list
+// and the pager; htmx swaps the new page into it.
+templ Pager(p Page, target string) {
+	if p.Last() > 1 {
+		<nav aria-label="Pages" class="mt-4 flex items-center justify-between gap-2">
+			<p class="text-sm tabular-nums opacity-70 max-sm:order-2">Page { Count(int64(p.Number)) } of { Count(int64(p.Last())) }</p>
+			<div class="contents sm:flex sm:items-center sm:gap-1">
+				if p.Number > 1 {
+					@pageLink(p, target, p.Number-1, "prev", "btn btn-sm btn-ghost max-sm:order-1") {
+						<span aria-hidden="true">‹</span> Previous
+					}
+				} else {
+					<span class="btn btn-sm btn-ghost btn-disabled max-sm:order-1" aria-disabled="true"><span aria-hidden="true">‹</span> Previous</span>
+				}
+				for _, n := range p.Links() {
+					if n == 0 {
+						<span class="w-6 text-center opacity-50 max-sm:hidden" aria-hidden="true">…</span>
+					} else if n == p.Number {
+						<span aria-current="page" class="btn btn-sm btn-primary pointer-events-none min-w-9 tabular-nums max-sm:hidden"><span class="sr-only">Page </span>{ strconv.Itoa(n) }</span>
+					} else {
+						@pageLink(p, target, n, "", "btn btn-sm btn-ghost min-w-9 tabular-nums max-sm:hidden") {
+							<span class="sr-only">Page </span>{ strconv.Itoa(n) }
+						}
+					}
+				}
+				if p.Number < p.Last() {
+					@pageLink(p, target, p.Number+1, "next", "btn btn-sm btn-ghost max-sm:order-3") {
+						Next <span aria-hidden="true">›</span>
+					}
+				} else {
+					<span class="btn btn-sm btn-ghost btn-disabled max-sm:order-3" aria-disabled="true">Next <span aria-hidden="true">›</span></span>
+				}
+			</div>
+		</nav>
+	}
+}
+
+templ pageLink(p Page, target string, n int, rel, class string) {
+	<a
+		href={ templ.URL(p.URL(n)) }
+		if rel != "" {
+			rel={ rel }
+		}
+		class={ class }
+		hx-get={ p.URL(n) }
+		hx-target={ "#" + target }
+		hx-swap="outerHTML show:window:top"
+		hx-push-url="true"
+	>
+		{ children... }
+	</a>
+}
+
+// StatTile is one number on a dashboard, such as open tasks.
+templ StatTile(label, value, note string) {
+	<div class={ PaddedCardClass, "min-w-0" }>
+		<p class="text-sm opacity-70">{ label }</p>
+		<p class="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{ value }</p>
+		if note != "" {
+			<p class="mt-1 text-xs opacity-60">{ note }</p>
+		}
+	</div>
+}
+
+// Empty is the placeholder for a list with nothing in it.
+templ Empty(title, body string) {
+	<div class={ PaddedCardClass, "text-center" }>
+		<p class="font-medium">{ title }</p>
+		if body != "" {
+			<p class="mt-1 text-sm opacity-70">{ body }</p>
+		}
+		<div class="mt-4 flex justify-center gap-2 empty:hidden">
+			{ children... }
+		</div>
+	</div>
+}
+
+// Flash is a one-line success message, such as after a save.
+templ Flash(msg string) {
+	if msg != "" {
+		<p role="status" class="alert alert-success alert-soft mb-6">{ msg }</p>
+	}
+}

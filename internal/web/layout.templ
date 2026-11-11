@@ -1,0 +1,201 @@
+package web
+
+import (
+	"context"
+	"strings"
+)
+
+// Document is the HTML shell every layout renders into. style is AppStyle
+// or PublicStyle.
+templ Document(title, style string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · Quickstack</title>
+			<link rel="icon" href="data:,"/>
+			@AssetTags(style)
+		</head>
+		<body class="min-h-screen bg-base-200 text-base-content antialiased">
+			{ children... }
+		</body>
+	</html>
+}
+
+// RequestError is the banner main.ts shows when an htmx request fails.
+templ RequestError() {
+	<div id="request-error" role="alert" hidden class="mx-auto mt-4 w-full max-w-6xl px-4">
+		<p class="alert alert-error alert-soft">Something went wrong. Please try again.</p>
+	</div>
+}
+
+// Layout is for pages outside the dashboards: sign in, sign up, errors.
+templ Layout(title string) {
+	@Document(title, AppStyle) {
+		<header class="border-b border-base-300 bg-base-100">
+			<nav class="navbar mx-auto max-w-3xl px-4">
+				<a href="/" class="text-lg font-semibold tracking-tight">Quickstack</a>
+			</nav>
+		</header>
+		@RequestError()
+		<main class="mx-auto max-w-3xl px-4 py-8">
+			{ children... }
+		</main>
+	}
+}
+
+templ PageHeader(title string) {
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+		<h1 class="min-w-0 text-2xl font-semibold tracking-tight wrap-break-word">{ title }</h1>
+		<div class="flex flex-wrap items-center gap-2">
+			{ children... }
+		</div>
+	</div>
+}
+
+templ NotFoundPage() {
+	@Layout("Not found") {
+		@PageHeader("Page not found")
+		<a href="/" class={ LinkClass }>Go to the home page</a>
+	}
+}
+
+templ ForbiddenPage() {
+	@Layout("Not allowed") {
+		@PageHeader("You don’t have access to this page")
+		<p class="opacity-70">Ask an owner of the workspace if you need it. <a href="/w" class={ LinkClass }>Go to your workspaces</a>.</p>
+	}
+}
+
+templ ErrorPage() {
+	@Layout("Error") {
+		@PageHeader("Something went wrong")
+		<p class="opacity-70">The error has been logged. Try again, or go back to the <a href="/" class={ LinkClass }>home page</a>.</p>
+	}
+}
+
+// NavItem is a link in a dashboard's sidebar. Exact marks it current only
+// on its own path, not on the paths below it.
+type NavItem struct {
+	Label string
+	Href  string
+	Exact bool
+}
+
+func (n NavItem) current(ctx context.Context) bool {
+	p := Path(ctx)
+	return p == n.Href || (!n.Exact && strings.HasPrefix(p, n.Href+"/"))
+}
+
+type NavSection struct {
+	Title string
+	Items []NavItem
+}
+
+// Shell describes a dashboard's sidebar. Each dashboard (a workspace, the
+// account pages, the platform admin) fills one in its own Layout.
+type Shell struct {
+	// Name is the dashboard's heading, such as the workspace's name, and
+	// Kind says what it is, such as "Workspace".
+	Name     string
+	NameHref string
+	Kind     string
+	Sections []NavSection
+	// UserName and UserEmail say who is signed in; Links go under them,
+	// above the sign-out button.
+	UserName   string
+	UserEmail  string
+	Links      []NavItem
+	LogoutPath string
+}
+
+// ShellLayout is a dashboard page: a sidebar that collapses into a drawer
+// on small screens. The drawer is a checkbox, so it works without
+// JavaScript.
+templ ShellLayout(title string, s Shell) {
+	@Document(title, AppStyle) {
+		<div class="drawer lg:drawer-open">
+			<input id="nav" type="checkbox" class="drawer-toggle"/>
+			<div class="drawer-content flex min-h-screen flex-col">
+				<header class="navbar gap-2 border-b border-base-300 bg-base-100 px-4 lg:hidden">
+					<label for="nav" class="btn btn-square btn-ghost" aria-label="Open menu">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-5" aria-hidden="true">
+							<path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"></path>
+						</svg>
+					</label>
+					<span class="truncate font-semibold tracking-tight">{ s.Name }</span>
+				</header>
+				@RequestError()
+				<main class="mx-auto w-full max-w-6xl px-4 py-8">
+					{ children... }
+				</main>
+			</div>
+			<div class="drawer-side z-20">
+				<label for="nav" class="drawer-overlay" aria-label="Close menu"></label>
+				@sidebar(s)
+			</div>
+		</div>
+	}
+}
+
+templ sidebar(s Shell) {
+	<aside class="flex min-h-full w-64 flex-col border-r border-base-300 bg-base-100">
+		<div class="px-6 py-5">
+			if s.Kind != "" {
+				<p class="text-xs font-medium tracking-wide uppercase opacity-60">{ s.Kind }</p>
+			}
+			<a href={ templ.SafeURL(s.NameHref) } class="block truncate font-semibold tracking-tight">{ s.Name }</a>
+		</div>
+		<nav aria-label={ s.Kind } class="flex-1">
+			<ul class="menu w-full gap-0.5 px-3">
+				for i, sec := range s.Sections {
+					if sec.Title != "" {
+						<li class={ "menu-title", templ.KV("mt-4", i > 0) }>{ sec.Title }</li>
+					}
+					for _, item := range sec.Items {
+						@navLink(item)
+					}
+				}
+			</ul>
+		</nav>
+		<div class="border-t border-base-300 p-3">
+			<div class="px-3 py-2">
+				<p class="truncate text-sm font-medium">{ s.UserName }</p>
+				<p class="truncate text-xs opacity-60">{ s.UserEmail }</p>
+			</div>
+			<ul class="menu w-full px-0">
+				for _, item := range s.Links {
+					@navLink(item)
+				}
+				<li>
+					<button type="submit" form="logout">Sign out</button>
+				</li>
+			</ul>
+			<form id="logout" method="post" action={ templ.SafeURL(s.LogoutPath) } class="hidden"></form>
+		</div>
+	</aside>
+}
+
+templ navLink(item NavItem) {
+	<li>
+		if item.current(ctx) {
+			<a href={ templ.SafeURL(item.Href) } class="menu-active" aria-current="page">{ item.Label }</a>
+		} else {
+			<a href={ templ.SafeURL(item.Href) }>{ item.Label }</a>
+		}
+	</li>
+}
+
+// Tabs are the page tabs under a PageHeader.
+templ Tabs(label string, items []NavItem) {
+	<nav aria-label={ label } class="tabs tabs-border -mt-2 mb-6 flex-nowrap overflow-x-auto">
+		for _, item := range items {
+			if item.current(ctx) {
+				<a href={ templ.SafeURL(item.Href) } class="tab tab-active" aria-current="page">{ item.Label }</a>
+			} else {
+				<a href={ templ.SafeURL(item.Href) } class="tab">{ item.Label }</a>
+			}
+		}
+	</nav>
+}

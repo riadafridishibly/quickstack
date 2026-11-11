@@ -1,0 +1,119 @@
+package account
+
+import (
+	"context"
+	"strconv"
+
+	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+// Layout frames the pages that belong to the person rather than to a
+// workspace: their workspaces, profile and security.
+templ Layout(title string) {
+	@web.ShellLayout(title, shell(ctx)) {
+		{ children... }
+	}
+}
+
+func shell(ctx context.Context) web.Shell {
+	u := auth.From(ctx)
+	s := web.Shell{
+		Name:     "Your account",
+		NameHref: auth.HomePath,
+		Kind:     "Personal",
+		Sections: []web.NavSection{{Items: []web.NavItem{
+			{Label: "Workspaces", Href: auth.HomePath, Exact: true},
+			{Label: "Profile", Href: profilePath, Exact: true},
+			{Label: "Security", Href: securityPath},
+		}}},
+		LogoutPath: auth.LogoutPath,
+	}
+	if u != nil {
+		s.UserName, s.UserEmail = u.Name, u.Email
+		if auth.CanPlatform(u.PlatformRole, auth.ViewPlatform) {
+			s.Links = append(s.Links, web.NavItem{Label: "Platform admin", Href: "/admin"})
+		}
+	}
+	return s
+}
+
+type profileView struct {
+	Name  string
+	Email string
+	Error string
+	Saved bool
+}
+
+templ profilePage(v profileView) {
+	@Layout("Profile") {
+		@web.PageHeader("Profile")
+		if v.Saved {
+			@web.Flash("Profile saved.")
+		}
+		<form method="post" action={ templ.SafeURL(profilePath) } novalidate class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
+			@web.Field("Name", "name", v.Error) {
+				<input type="text" { web.InputAttrs("name", v.Error)... } value={ v.Name } autocomplete="name" required class={ web.InputClass }/>
+			}
+			<div class="space-y-1.5">
+				<p class="text-sm font-medium">Email</p>
+				<p class="break-all">{ v.Email }</p>
+			</div>
+			<button type="submit" class={ web.ButtonClass }>Save</button>
+		</form>
+	}
+}
+
+templ securityPage(v securityView) {
+	@Layout("Security") {
+		@web.PageHeader("Security")
+		@web.Flash(v.Message)
+		<div class="grid gap-6 lg:grid-cols-2">
+			<form method="post" action={ templ.SafeURL(securityPath + "/password") } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+				<h2 class="text-lg font-semibold">Change password</h2>
+				@web.Field("Current password", "current_password", v.Form.Errors["current_password"]) {
+					<input type="password" { web.InputAttrs("current_password", v.Form.Errors["current_password"])... } autocomplete="current-password" required class={ web.InputClass }/>
+				}
+				@web.Field("New password", "new_password", v.Form.Errors["new_password"]) {
+					<input type="password" { web.InputAttrs("new_password", v.Form.Errors["new_password"])... } autocomplete="new-password" required minlength="10" class={ web.InputClass }/>
+				}
+				@web.Field("Confirm new password", "confirm_password", v.Form.Errors["confirm_password"]) {
+					<input type="password" { web.InputAttrs("confirm_password", v.Form.Errors["confirm_password"])... } autocomplete="new-password" required class={ web.InputClass }/>
+				}
+				<button type="submit" class={ web.ButtonClass }>Change password</button>
+			</form>
+			<section class={ web.PaddedCardClass }>
+				<h2 class="text-lg font-semibold">Sessions</h2>
+				<p class="mt-1 text-sm opacity-70">Where you’re signed in. Sign out of a device you don’t recognize, then change your password.</p>
+				<ul class="mt-4 divide-y divide-base-300">
+					for _, s := range v.Sessions {
+						<li class="flex items-center justify-between gap-3 py-3">
+							<div class="min-w-0">
+								<p class="font-medium">{ Device(s.UserAgent) }</p>
+								<p class="text-xs opacity-60">Last active { s.LastSeenAt.Format("Jan 2, 15:04") } UTC · signed in { s.CreatedAt.Format("Jan 2, 2006") }</p>
+							</div>
+							if s.ID == v.Current {
+								<span class="badge badge-soft badge-primary shrink-0">This device</span>
+							} else {
+								<form
+									method="post"
+									action={ templ.SafeURL(securityPath + "/sessions/" + strconv.FormatInt(s.ID, 10) + "/delete") }
+									hx-post={ securityPath + "/sessions/" + strconv.FormatInt(s.ID, 10) + "/delete" }
+									hx-target="closest li"
+									hx-swap="outerHTML"
+								>
+									<button type="submit" class={ web.DangerButtonClass }>Sign out</button>
+								</form>
+							}
+						</li>
+					}
+				</ul>
+				if len(v.Sessions) > 1 {
+					<form method="post" action={ templ.SafeURL(securityPath + "/sign-out-others") } class="mt-4">
+						<button type="submit" class={ web.SecondaryButtonClass }>Sign out of all other devices</button>
+					</form>
+				}
+			</section>
+		</div>
+	}
+}

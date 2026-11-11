@@ -1,0 +1,33 @@
+package mail
+
+import (
+	"net/http"
+
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+// Handler serves /dev/mail, the messages in the outbox.
+func (o *Outbox) Handler() http.Handler {
+	return web.Handle(func(w http.ResponseWriter, r *http.Request) error {
+		return web.Render(w, r, http.StatusOK, outboxPage(o.Messages()))
+	})
+}
+
+templ outboxPage(msgs []Sent) {
+	@web.Layout("Mail outbox") {
+		@web.PageHeader("Mail outbox")
+		<p class="mb-6 text-sm opacity-70">Mail the server sent, newest first. This page exists only with QUICKSTACK_DEV=1 or QUICKSTACK_MAIL_OUTBOX=1.</p>
+		if len(msgs) == 0 {
+			@web.Empty("No mail yet", "Invitations and password resets show up here.")
+		}
+		<ol class="space-y-4">
+			for _, m := range msgs {
+				<li class={ web.PaddedCardClass }>
+					<p class="text-sm opacity-60">{ m.At.Format("15:04:05") } · to <span data-to={ m.To }>{ m.To }</span></p>
+					<p class="font-semibold">{ m.Subject }</p>
+					<pre class="mt-3 font-sans text-sm whitespace-pre-wrap">{ m.Text }</pre>
+				</li>
+			}
+		</ol>
+	}
+}

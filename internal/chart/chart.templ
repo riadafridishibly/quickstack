@@ -1,0 +1,143 @@
+package chart
+
+import (
+	"strconv"
+
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+// Card is a chart in a card, with its title and a table of its values.
+templ Card(d Data) {
+	@card(layout(d))
+}
+
+templ card(v chartView) {
+	<section class={ web.PaddedCardClass, "min-w-0" }>
+		<h2 class="font-semibold">{ v.Title }</h2>
+		if v.Note != "" {
+			<p class="text-sm opacity-60">{ v.Note }</p>
+		}
+		if !v.HasData {
+			<p class="mt-4 text-sm opacity-60">{ v.Empty }</p>
+		} else {
+			if len(v.Series) > 1 || v.Legend {
+				<ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+					for _, s := range v.Series {
+						<li
+							class="flex items-center gap-1.5"
+							if s.FullName != "" {
+								title={ s.FullName }
+							}
+						>
+							<svg class="h-2 w-4" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" stroke-width="2" stroke-linecap="round" class={ s.Stroke }></line></svg>
+							<span class={ templ.KV("italic", s.Placeholder) }>{ s.Name }</span>
+						</li>
+					}
+				</ul>
+			}
+			<div class="mt-3 flex" aria-hidden="true">
+				<svg class="h-[212px] w-14 shrink-0 text-xs">
+					for _, t := range v.Ticks {
+						<text x="48" y={ px(t.Y) } text-anchor="end" dominant-baseline="middle" class="fill-base-content/60 tabular-nums">{ t.Label }</text>
+					}
+				</svg>
+				<svg class="h-[212px] min-w-0 flex-1 overflow-visible text-xs">
+					for _, t := range v.Ticks {
+						<line x1="0" x2="100%" y1={ px(t.Y) } y2={ px(t.Y) } stroke-width="1" class="stroke-base-300"></line>
+					}
+					<svg width="100%" height={ px(plotBase) }>
+						for _, b := range v.Bars {
+							<svg x={ b.Center } overflow="visible">
+								<rect x={ v.BarX } width={ v.BarWidth } y={ px(b.Y) } height={ px(b.Height) } rx={ v.BarRadius } class={ v.Series[0].Fill }></rect>
+							</svg>
+						}
+					</svg>
+					for _, l := range v.Lines {
+						<g stroke-width="2" stroke-linecap="round" class={ l.Series.Stroke }>
+							for _, s := range l.Segments {
+								<line x1={ s.X1 } y1={ px(s.Y1) } x2={ s.X2 } y2={ px(s.Y2) }></line>
+							}
+						</g>
+						for _, d := range l.Dots {
+							<circle cx={ d.X } cy={ px(d.Y) } r="5" stroke-width="2" class={ l.Series.Fill, "stroke-base-100" }></circle>
+						}
+					}
+					for _, a := range v.Labels {
+						<text x={ a.X } y="208" text-anchor={ a.Anchor } class="fill-base-content/60 tabular-nums">{ a.Text }</text>
+					}
+					for _, h := range v.Hits {
+						@chartHitArea(v, h)
+					}
+				</svg>
+			</div>
+			<details class="mt-3 text-sm">
+				<summary class="cursor-pointer opacity-60">Table</summary>
+				<div class="mt-2 max-h-64 overflow-y-auto">
+					<table class="table table-xs">
+						<thead>
+							<tr>
+								<th scope="col">Day (UTC)</th>
+								for _, s := range v.Series {
+									<th
+										scope="col"
+										class={ "text-right", templ.KV("italic", s.Placeholder) }
+										if s.FullName != "" {
+											title={ s.FullName }
+										}
+									>{ s.Name }</th>
+								}
+							</tr>
+						</thead>
+						<tbody class="tabular-nums">
+							for _, r := range v.Rows {
+								<tr>
+									<th scope="row" class="font-normal">{ r.Date }</th>
+									for _, c := range r.Values {
+										<td class="text-right">{ c }</td>
+									}
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</details>
+		}
+	</section>
+}
+
+// chartHitArea is one day's hover target and tooltip. tabindex -1 lets a tap
+// focus it on touch screens without adding a tab stop per day; keyboard
+// users have the table.
+templ chartHitArea(v chartView, h chartHit) {
+	<g class="group/day outline-none" tabindex="-1">
+		<rect
+			x={ h.X }
+			width={ h.Width }
+			y="0"
+			height={ px(plotBase) }
+			class={ "fill-transparent", templ.KV("group-hover/day:fill-base-content/10 group-focus/day:fill-base-content/10", v.Kind == Columns) }
+		></rect>
+		if v.Kind == Lines {
+			<line x1={ h.Center } x2={ h.Center } y1={ px(plotTop) } y2={ px(plotBase) } stroke-width="1" class="stroke-base-content/40 invisible group-hover/day:visible group-focus/day:visible"></line>
+		}
+		<svg x={ h.Center } overflow="visible" class="pointer-events-none invisible group-hover/day:visible group-focus/day:visible">
+			<rect x={ px(h.Tooltip.X) } y="8" width={ px(h.Tooltip.Width) } height={ px(h.Tooltip.Height) } rx="6" stroke-width="1" class="fill-base-100 stroke-base-300"></rect>
+			<text x={ px(h.Tooltip.X + tooltipPadding) } y="26" class="fill-base-content/60">{ h.Tooltip.Date }</text>
+			for _, r := range h.Tooltip.Rows {
+				<line x1={ px(h.Tooltip.X + tooltipPadding) } x2={ px(h.Tooltip.X + tooltipPadding + 14) } y1={ px(r.Y - 4) } y2={ px(r.Y - 4) } stroke-width="2" stroke-linecap="round" class={ r.Stroke }></line>
+				<text x={ px(h.Tooltip.X + tooltipPadding + tooltipKeyPx) } y={ px(r.Y) } class="fill-base-content tabular-nums">
+					<tspan class="font-semibold">{ r.Value }</tspan>
+					<tspan class={ "fill-base-content/60", templ.KV("italic", r.Placeholder) }>{ r.Name }</tspan>
+				</text>
+			}
+		</svg>
+	</g>
+}
+
+// BarWidth is a ranked bar's share of the longest bar, as a CSS width.
+func BarWidth(n, top int64) string {
+	if top <= 0 {
+		return "0%"
+	}
+	return strconv.FormatFloat(float64(n)/float64(top)*100, 'f', 2, 64) + "%"
+}

@@ -1,0 +1,145 @@
+package auth
+
+import (
+	"net/url"
+
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+type loginView struct {
+	Email string
+	Next  string
+	Error string
+}
+
+templ loginPage(v loginView) {
+	@web.Layout("Sign in") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Sign in</h1>
+			<form method="post" action={ templ.SafeURL(LoginPath) } class={ web.PaddedCardClass, "space-y-5" }>
+				if v.Error != "" {
+					<p role="alert" class="alert alert-error alert-soft">{ v.Error }</p>
+				}
+				<input type="hidden" name="next" value={ v.Next }/>
+				@web.Field("Email", "email", "") {
+					<input type="email" { web.InputAttrs("email", "")... } value={ v.Email } autocomplete="username" required autofocus class={ web.InputClass }/>
+				}
+				@web.Field("Password", "password", "") {
+					<input type="password" { web.InputAttrs("password", "")... } autocomplete="current-password" required class={ web.InputClass }/>
+				}
+				<button type="submit" class={ web.ButtonClass, "w-full" }>Sign in</button>
+				<p class="text-center text-sm">
+					<a href={ templ.SafeURL(forgotPath + "?email=" + url.QueryEscape(v.Email)) } class={ web.LinkClass }>Forgot your password?</a>
+				</p>
+			</form>
+			<p class="mt-6 text-center text-sm opacity-80">
+				New here? <a href={ templ.SafeURL(SignupPath + "?next=" + url.QueryEscape(v.Next)) } class={ web.LinkClass }>Create an account</a>
+			</p>
+		</div>
+	}
+}
+
+type signupView struct {
+	Name   string
+	Email  string
+	Next   string
+	Error  string
+	Errors map[string]string
+}
+
+templ signupPage(v signupView) {
+	@web.Layout("Create an account") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Create an account</h1>
+			<form method="post" action={ templ.SafeURL(SignupPath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+				if v.Error != "" {
+					<p role="alert" class="alert alert-error alert-soft">{ v.Error }</p>
+				}
+				<input type="hidden" name="next" value={ v.Next }/>
+				@web.Field("Your name", "name", v.Errors["name"]) {
+					<input type="text" { web.InputAttrs("name", v.Errors["name"])... } value={ v.Name } autocomplete="name" required autofocus class={ web.InputClass }/>
+				}
+				@web.Field("Email", "email", v.Errors["email"]) {
+					<input type="email" { web.InputAttrs("email", v.Errors["email"])... } value={ v.Email } autocomplete="username" required class={ web.InputClass }/>
+				}
+				@web.Field("Password", "password", v.Errors["password"]) {
+					<input type="password" { web.InputAttrs("password", v.Errors["password"])... } autocomplete="new-password" required minlength="10" class={ web.InputClass }/>
+				}
+				<button type="submit" class={ web.ButtonClass, "w-full" }>Create account</button>
+			</form>
+			<p class="mt-6 text-center text-sm opacity-80">
+				Have an account? <a href={ templ.SafeURL(LoginPath + "?next=" + url.QueryEscape(v.Next)) } class={ web.LinkClass }>Sign in</a>
+			</p>
+		</div>
+	}
+}
+
+type forgotView struct {
+	Email string
+	Error string
+}
+
+templ forgotPage(v forgotView) {
+	@web.Layout("Reset your password") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Reset your password</h1>
+			<form method="post" action={ templ.SafeURL(forgotPath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+				<p class="text-sm opacity-80">Enter your account’s email, and we’ll send you a link to choose a new password.</p>
+				if v.Error != "" {
+					<p role="alert" class="alert alert-error alert-soft">{ v.Error }</p>
+				}
+				@web.Field("Email", "email", "") {
+					<input type="email" { web.InputAttrs("email", "")... } value={ v.Email } autocomplete="username" required autofocus class={ web.InputClass }/>
+				}
+				<button type="submit" class={ web.ButtonClass, "w-full" }>Send reset link</button>
+			</form>
+		</div>
+	}
+}
+
+templ forgotSentPage(email string) {
+	@web.Layout("Check your email") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Check your email</h1>
+			<div class={ web.PaddedCardClass, "space-y-3 text-sm" }>
+				<p>If <strong>{ email }</strong> has an account, we sent it a link to reset the password. The link works for an hour.</p>
+				<p><a href={ templ.SafeURL(LoginPath) } class={ web.LinkClass }>Back to sign in</a></p>
+			</div>
+		</div>
+	}
+}
+
+type resetView struct {
+	Token  string
+	Errors map[string]string
+}
+
+templ resetPage(v resetView) {
+	@web.Layout("Choose a new password") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Choose a new password</h1>
+			<form method="post" action={ templ.SafeURL(resetPath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+				<input type="hidden" name="token" value={ v.Token }/>
+				@web.Field("New password", "password", v.Errors["password"]) {
+					<input type="password" { web.InputAttrs("password", v.Errors["password"])... } autocomplete="new-password" required minlength="10" autofocus class={ web.InputClass }/>
+				}
+				@web.Field("Confirm new password", "confirm_password", v.Errors["confirm_password"]) {
+					<input type="password" { web.InputAttrs("confirm_password", v.Errors["confirm_password"])... } autocomplete="new-password" required class={ web.InputClass }/>
+				}
+				<button type="submit" class={ web.ButtonClass, "w-full" }>Set password and sign in</button>
+			</form>
+		</div>
+	}
+}
+
+templ resetExpiredPage() {
+	@web.Layout("Link expired") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">This link has expired</h1>
+			<div class={ web.PaddedCardClass, "space-y-3 text-sm" }>
+				<p>Reset links work once, for an hour.</p>
+				<p><a href={ templ.SafeURL(forgotPath) } class={ web.LinkClass }>Send a new link</a></p>
+			</div>
+		</div>
+	}
+}

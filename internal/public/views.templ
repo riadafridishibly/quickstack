@@ -1,0 +1,112 @@
+package public
+
+import (
+	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+templ layout(title string) {
+	@web.Document(title, web.PublicStyle) {
+		<div class="flex min-h-screen flex-col bg-base-100">
+			<header class="border-b border-base-300">
+				<nav class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4">
+					<a href="/" class="font-display text-xl font-semibold tracking-tight">Quickstack</a>
+					<div class="flex items-center gap-2">
+						if auth.From(ctx) != nil {
+							<a href={ templ.SafeURL(auth.HomePath) } class="btn btn-primary btn-sm">Your workspaces</a>
+						} else {
+							<a href={ templ.SafeURL(auth.LoginPath) } class="btn btn-ghost btn-sm">Sign in</a>
+							<a href={ templ.SafeURL(auth.SignupPath) } class="btn btn-primary btn-sm">Get started</a>
+						}
+					</div>
+				</nav>
+			</header>
+			<main class="flex-1">
+				{ children... }
+			</main>
+			<footer class="border-t border-base-300">
+				<p class="mx-auto max-w-5xl px-4 py-6 text-sm opacity-60">A Go, templ, htmx and PostgreSQL starter.</p>
+			</footer>
+		</div>
+	}
+}
+
+templ landingPage() {
+	@layout("Plan the work, show the progress") {
+		<section class="mx-auto max-w-5xl px-4 py-20 sm:py-28">
+			<p class="text-sm font-semibold tracking-wide text-primary uppercase">Projects and tasks for small teams</p>
+			<h1 class="font-display mt-4 max-w-3xl text-4xl leading-tight font-semibold tracking-tight sm:text-6xl">Plan the work. Show the progress.</h1>
+			<p class="mt-6 max-w-2xl text-lg opacity-80">Workspaces with roles, a board you can drag tasks across, charts of what got done, and a public roadmap for the people you build for.</p>
+			<div class="mt-10 flex flex-wrap gap-3">
+				if auth.From(ctx) != nil {
+					<a href={ templ.SafeURL(auth.HomePath) } class="btn btn-primary btn-lg">Open your workspaces</a>
+				} else {
+					<a href={ templ.SafeURL(auth.SignupPath) } class="btn btn-primary btn-lg">Create a workspace</a>
+					<a href={ templ.SafeURL(auth.LoginPath) } class="btn btn-ghost btn-lg">Sign in</a>
+				}
+			</div>
+		</section>
+		<section class="border-t border-base-300 bg-base-200">
+			<div class="mx-auto grid max-w-5xl gap-8 px-4 py-16 sm:grid-cols-3">
+				@feature("Three dashboards, one binary", "Each workspace has its own; you have one for your account; staff have one for the platform.")
+				@feature("Roles that hold", "Owners, admins, members and viewers. PostgreSQL row-level security keeps workspaces apart.")
+				@feature("Public when you want", "Turn on a roadmap and pick the projects it shows. Everything else stays private.")
+			</div>
+		</section>
+	}
+}
+
+templ feature(title, body string) {
+	<div>
+		<h2 class="font-display text-xl font-semibold">{ title }</h2>
+		<p class="mt-2 opacity-80">{ body }</p>
+	</div>
+}
+
+templ roadmapPage(name string, projects []*roadmapProject) {
+	@layout(name + " roadmap") {
+		<section class="mx-auto max-w-5xl px-4 py-12">
+			<p class="text-sm font-semibold tracking-wide text-primary uppercase">Roadmap</p>
+			<h1 class="font-display mt-2 text-4xl font-semibold tracking-tight">{ name }</h1>
+			<p class="mt-3 max-w-2xl opacity-80">What we’re working on now, what’s next, and what we finished in the last 30 days.</p>
+			if len(projects) == 0 {
+				<p class="mt-12 rounded-box border border-base-300 p-8 text-center opacity-70">Nothing on the roadmap yet.</p>
+			}
+			for _, p := range projects {
+				<article class="mt-12">
+					<h2 class="font-display text-2xl font-semibold">{ p.Name }</h2>
+					if p.Description != "" {
+						<p class="mt-2 max-w-3xl whitespace-pre-line opacity-80">{ p.Description }</p>
+					}
+					<div class="mt-6 grid gap-4 md:grid-cols-3">
+						@lane("Now", "badge-primary", p.Now)
+						@lane("Next", "badge-secondary", p.Next)
+						@lane("Done", "badge-success", p.Done)
+					</div>
+				</article>
+			}
+		</section>
+	}
+}
+
+templ lane(title, badge string, tasks []db.ListRoadmapRow) {
+	<section class="rounded-box border border-base-300 p-4">
+		<h3 class="flex items-center gap-2 font-semibold">
+			<span class={ "badge badge-soft", badge }>{ title }</span>
+		</h3>
+		if len(tasks) == 0 {
+			<p class="mt-3 text-sm opacity-50">Nothing here.</p>
+		}
+		<ul class="mt-3 space-y-2">
+			for _, t := range tasks {
+				<li class="text-sm">
+					{ t.Title }
+					if t.CompletedAt != nil {
+						<span class="opacity-50">· { t.CompletedAt.Format("Jan 2") }</span>
+					}
+				</li>
+			}
+		</ul>
+	</section>
+}

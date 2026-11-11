@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Runs make check before a push. It checks the working tree, so the tree must
+# be clean and at the commit being pushed, and make check must leave it clean:
+# a change there is generated or formatted output that wasn't committed.
+# Skip with git push --no-verify.
+set -euo pipefail
+
+head=$(git rev-parse HEAD)
+pushing=false
+while read -r _ sha _ _; do
+	[[ $sha =~ ^0+$ ]] && continue # a deleted ref
+	if [ "$(git rev-parse "$sha^{commit}")" != "$head" ]; then
+		echo "pre-push: $sha isn't HEAD, and make check only tests HEAD. Check it out first." >&2
+		exit 1
+	fi
+	pushing=true
+done
+$pushing || exit 0
+
+if [ -n "$(git status --porcelain)" ]; then
+	echo "pre-push: commit or stash these first, or make check tests them too:" >&2
+	git status --short >&2
+	exit 1
+fi
+
+make check </dev/null
+
+if [ -n "$(git status --porcelain)" ]; then
+	echo "pre-push: make check changed files. Commit them:" >&2
+	git status --short >&2
+	exit 1
+fi

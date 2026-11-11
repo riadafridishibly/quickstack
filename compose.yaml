@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: quickstack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      QUICKSTACK_OWNER_PASSWORD: ${QUICKSTACK_OWNER_PASSWORD:-owner}
+      QUICKSTACK_APP_PASSWORD: ${QUICKSTACK_APP_PASSWORD:-app}
+    volumes:
+      - db:/var/lib/postgresql/data
+      - ./internal/db/roles.sql:/quickstack/roles.sql:ro
+      - ./deploy/initdb.sh:/docker-entrypoint-initdb.d/10-quickstack.sh:ro
+    ports:
+      - "127.0.0.1:${QUICKSTACK_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "quickstack"]
+      interval: 2s
+      retries: 30
+
+volumes:
+  db:

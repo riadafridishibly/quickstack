@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Renames a copy of quickstack: the Go module path, and "quickstack" in
+# package names, database roles and databases, QUICKSTACK_* variables and
+# page titles.
+#
+#   scripts/rename github.com/you/myapp myapp
+set -euo pipefail
+
+if [ $# -ne 2 ]; then
+	echo "usage: scripts/rename <go module path> <name>" >&2
+	exit 2
+fi
+module=$1
+name=$2
+# The name becomes PostgreSQL role and database names.
+if [[ ! $name =~ ^[a-z][a-z0-9]*$ ]]; then
+	echo "name must be lowercase letters and digits, starting with a letter" >&2
+	exit 2
+fi
+upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+title="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
+
+cd "$(dirname "$0")/.."
+git ls-files --cached --others --exclude-standard -z |
+	while IFS= read -r -d '' f; do
+		case $f in pnpm-lock.yaml | scripts/rename) continue ;; esac
+		grep -Iq . "$f" 2>/dev/null || continue # skip binary and empty files
+		MODULE=$module NAME=$name UPPER=$upper TITLE=$title perl -pi -e '
+			s{github\.com/riadafridishibly/quickstack}{$ENV{MODULE}}g;
+			s{QUICKSTACK}{$ENV{UPPER}}g;
+			s{Quickstack}{$ENV{TITLE}}g;
+			s{quickstack}{$ENV{NAME}}g;
+		' "$f"
+	done
+echo "Renamed to $module ($name). Next: make setup db-setup check"

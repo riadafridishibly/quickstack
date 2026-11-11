@@ -1,0 +1,338 @@
+package platform
+
+import (
+	"context"
+	"strconv"
+
+	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/chart"
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+func accountURL(id int64) string   { return "/admin/accounts/" + strconv.FormatInt(id, 10) }
+func workspaceURL(id int64) string { return "/admin/workspaces/" + strconv.FormatInt(id, 10) }
+
+templ Layout(title string) {
+	@web.ShellLayout(title, shell(ctx)) {
+		{ children... }
+	}
+}
+
+func shell(ctx context.Context) web.Shell {
+	s := web.Shell{
+		Name:     "Quickstack",
+		NameHref: homePath,
+		Kind:     "Platform admin",
+		Sections: []web.NavSection{{Items: []web.NavItem{
+			{Label: "Overview", Href: homePath, Exact: true},
+			{Label: "Accounts", Href: "/admin/accounts"},
+			{Label: "Workspaces", Href: "/admin/workspaces"},
+			{Label: "Audit log", Href: "/admin/audit"},
+		}}},
+		Links:      []web.NavItem{{Label: "Your workspaces", Href: auth.HomePath, Exact: true}, {Label: "Your account", Href: "/account"}},
+		LogoutPath: auth.LogoutPath,
+	}
+	if u := auth.From(ctx); u != nil {
+		s.UserName, s.UserEmail = u.Name, u.Email
+	}
+	return s
+}
+
+templ homePage(v homeView) {
+	@Layout("Overview") {
+		@web.PageHeader("Overview")
+		<div class="grid gap-4 sm:grid-cols-3">
+			@web.StatTile("Accounts", web.Count(v.Counts.Accounts), "")
+			@web.StatTile("Workspaces", web.Count(v.Counts.Workspaces), "")
+			@web.StatTile("Active accounts", web.Count(v.Counts.ActiveAccounts), "Seen in the last 7 days")
+		</div>
+		<div class="mt-6">
+			@chart.Card(v.Signups)
+		</div>
+	}
+}
+
+// searchForm is a live search over a list: htmx swaps the list as you type,
+// and without JavaScript the Search button submits it.
+templ searchForm(action, query, label string) {
+	<form
+		method="get"
+		action={ templ.SafeURL(action) }
+		hx-get={ action }
+		hx-trigger="input changed delay:250ms from:input[name=q], change from:input[type=checkbox], submit"
+		hx-target={ "#" + listTarget }
+		hx-swap="outerHTML"
+		hx-push-url="true"
+		role="search"
+		class="mb-4 flex flex-wrap items-center gap-3"
+	>
+		<label class="input min-w-0 flex-1">
+			<span class="sr-only">{ label }</span>
+			<input type="search" name="q" value={ query } placeholder={ label } autocomplete="off"/>
+		</label>
+		{ children... }
+		<button type="submit" class={ web.SecondaryButtonClass, "[.js_&]:hidden" }>Search</button>
+	</form>
+}
+
+templ accountsPage(v accountsView) {
+	@Layout("Accounts") {
+		@web.PageHeader("Accounts")
+		@searchForm("/admin/accounts", v.Query, "Search by name or email") {
+			<label class="flex items-center gap-2 text-sm">
+				<input type="checkbox" name="staff" value="1" checked?={ v.StaffOnly } class="checkbox checkbox-sm"/>
+				Staff only
+			</label>
+		}
+		@accountList(v)
+	}
+}
+
+templ accountList(v accountsView) {
+	<div id={ listTarget } class="transition-opacity [&.htmx-request]:opacity-60">
+		@web.PageCount(v.Page, "accounts")
+		<div class={ web.CardClass, "overflow-x-auto" }>
+			<table class="table">
+				<thead>
+					<tr>
+						<th scope="col">Name</th>
+						<th scope="col" class="text-right">Workspaces</th>
+						<th scope="col" class="max-sm:hidden">Joined</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, a := range v.Rows {
+						<tr>
+							<td>
+								<a href={ templ.SafeURL(accountURL(a.ID)) } class={ web.LinkClass }>{ a.Name }</a>
+								if a.PlatformRole != nil {
+									<span class="badge badge-soft badge-secondary badge-sm ml-2">{ auth.PlatformRole(*a.PlatformRole).Label() }</span>
+								}
+								<p class="text-sm opacity-60">{ a.Email }</p>
+							</td>
+							<td class="text-right tabular-nums">{ web.Count(a.Workspaces) }</td>
+							<td class="max-sm:hidden text-sm opacity-70">{ a.CreatedAt.Format("Jan 2, 2006") }</td>
+						</tr>
+					}
+					if len(v.Rows) == 0 {
+						<tr><td colspan="3" class="text-center opacity-70">No accounts match.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		@web.Pager(v.Page, listTarget)
+	</div>
+}
+
+templ accountPage(v accountView) {
+	{{ me := auth.From(ctx) }}
+	@Layout(v.Account.Name) {
+		<nav aria-label="Breadcrumb" class="mb-1 text-sm opacity-70">
+			<a href="/admin/accounts" class="link-hover">Accounts</a>
+		</nav>
+		@web.PageHeader(v.Account.Name)
+		@web.Flash(v.Message)
+		if v.Error != "" {
+			<p role="alert" class="alert alert-error alert-soft mb-6">{ v.Error }</p>
+		}
+		<div class="grid gap-6 lg:grid-cols-2">
+			<section class={ web.PaddedCardClass, "space-y-4" }>
+				<dl class="grid gap-3 sm:grid-cols-2">
+					<div>
+						<dt class="text-sm opacity-60">Email</dt>
+						<dd class="break-all">{ v.Account.Email }</dd>
+					</div>
+					<div>
+						<dt class="text-sm opacity-60">Joined</dt>
+						<dd>{ v.Account.CreatedAt.Format("Jan 2, 2006") }</dd>
+					</div>
+					<div>
+						<dt class="text-sm opacity-60">Active sessions</dt>
+						<dd class="tabular-nums">{ strconv.Itoa(len(v.Sessions)) }</dd>
+					</div>
+				</dl>
+				if auth.CanPlatform(me.PlatformRole, auth.ManagePlatformRoles) && me.ID != v.Account.ID {
+					<form method="post" action={ templ.SafeURL(accountURL(v.Account.ID) + "/role") } class="flex flex-wrap items-end gap-2">
+						@web.Field("Platform role", "role", "") {
+							<select { web.InputAttrs("role", "")... } class="select w-48">
+								<option value="">None</option>
+								for _, r := range auth.PlatformRoles {
+									<option value={ string(r) } selected?={ v.Account.PlatformRole != nil && *v.Account.PlatformRole == string(r) }>{ r.Label() }</option>
+								}
+							</select>
+						}
+						<button type="submit" class={ web.SecondaryButtonClass }>Save role</button>
+					</form>
+				} else if v.Account.PlatformRole != nil {
+					<p class="text-sm">Platform role: <span class="badge badge-soft badge-secondary">{ auth.PlatformRole(*v.Account.PlatformRole).Label() }</span></p>
+				}
+				if auth.CanPlatform(me.PlatformRole, auth.SignOutAccounts) && len(v.Sessions) > 0 {
+					<form method="post" action={ templ.SafeURL(accountURL(v.Account.ID) + "/sign-out") }>
+						<button type="submit" class={ web.SecondaryButtonClass }>Sign out everywhere</button>
+					</form>
+				}
+			</section>
+			<section class={ web.PaddedCardClass }>
+				<h2 class="font-semibold">Workspaces</h2>
+				if len(v.Memberships) == 0 {
+					<p class="mt-2 text-sm opacity-70">Not a member of any workspace.</p>
+				}
+				<ul class="mt-3 divide-y divide-base-300">
+					for _, m := range v.Memberships {
+						<li class="flex justify-between gap-2 py-2">
+							<a href={ templ.SafeURL(workspaceURL(m.ID)) } class={ web.LinkClass }>{ m.Name }</a>
+							<span class="text-sm opacity-70">{ auth.Role(m.Role).Label() }</span>
+						</li>
+					}
+				</ul>
+			</section>
+		</div>
+	}
+}
+
+templ workspacesPage(v workspacesView) {
+	@Layout("Workspaces") {
+		@web.PageHeader("Workspaces")
+		@searchForm("/admin/workspaces", v.Query, "Search by name or URL")
+		@workspaceList(v)
+	}
+}
+
+templ workspaceList(v workspacesView) {
+	<div id={ listTarget } class="transition-opacity [&.htmx-request]:opacity-60">
+		@web.PageCount(v.Page, "workspaces")
+		<div class={ web.CardClass, "overflow-x-auto" }>
+			<table class="table">
+				<thead>
+					<tr>
+						<th scope="col">Name</th>
+						<th scope="col" class="text-right">Members</th>
+						<th scope="col" class="max-sm:hidden">Created</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, w := range v.Rows {
+						<tr>
+							<td>
+								<a href={ templ.SafeURL(workspaceURL(w.ID)) } class={ web.LinkClass }>{ w.Name }</a>
+								if w.Public {
+									<span class="badge badge-soft badge-info badge-sm ml-2">Public</span>
+								}
+								<p class="text-sm opacity-60">/w/{ w.Slug }</p>
+							</td>
+							<td class="text-right tabular-nums">{ web.Count(w.Members) }</td>
+							<td class="max-sm:hidden text-sm opacity-70">{ w.CreatedAt.Format("Jan 2, 2006") }</td>
+						</tr>
+					}
+					if len(v.Rows) == 0 {
+						<tr><td colspan="3" class="text-center opacity-70">No workspaces match.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		@web.Pager(v.Page, listTarget)
+	</div>
+}
+
+templ workspacePage(ws db.Workspace, members []db.ListMembersRow) {
+	@Layout(ws.Name) {
+		<nav aria-label="Breadcrumb" class="mb-1 text-sm opacity-70">
+			<a href="/admin/workspaces" class="link-hover">Workspaces</a>
+		</nav>
+		@web.PageHeader(ws.Name)
+		<p class="-mt-3 mb-6 text-sm opacity-70">
+			/w/{ ws.Slug } · created { ws.CreatedAt.Format("Jan 2, 2006") }
+			if ws.Public {
+				· <a href={ templ.SafeURL("/p/" + ws.Slug) } class={ web.LinkClass }>public roadmap</a>
+			}
+		</p>
+		<div class={ web.CardClass, "overflow-x-auto" }>
+			<table class="table">
+				<thead>
+					<tr>
+						<th scope="col">Member</th>
+						<th scope="col">Role</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, m := range members {
+						<tr>
+							<td>
+								<a href={ templ.SafeURL(accountURL(m.ID)) } class={ web.LinkClass }>{ m.Name }</a>
+								<p class="text-sm opacity-60">{ m.Email }</p>
+							</td>
+							<td>{ auth.Role(m.Role).Label() }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ auditPage(v auditView) {
+	@Layout("Audit log") {
+		@web.PageHeader("Audit log")
+		<form
+			method="get"
+			action="/admin/audit"
+			hx-get="/admin/audit"
+			hx-trigger="change, submit"
+			hx-target={ "#" + listTarget }
+			hx-swap="outerHTML"
+			hx-push-url="true"
+			class="mb-4 flex items-center gap-2"
+		>
+			<select name="action" aria-label="Action" class="select w-64">
+				<option value="">All actions</option>
+				for _, a := range v.Actions {
+					<option value={ a } selected?={ a == v.Action }>{ a }</option>
+				}
+			</select>
+			<button type="submit" class={ web.SecondaryButtonClass, "[.js_&]:hidden" }>Filter</button>
+		</form>
+		@auditList(v)
+	}
+}
+
+templ auditList(v auditView) {
+	<div id={ listTarget } class="transition-opacity [&.htmx-request]:opacity-60">
+		@web.PageCount(v.Page, "entries")
+		<div class={ web.CardClass, "overflow-x-auto" }>
+			<table class="table table-sm">
+				<thead>
+					<tr>
+						<th scope="col">When (UTC)</th>
+						<th scope="col">Who</th>
+						<th scope="col">Action</th>
+						<th scope="col">Target</th>
+						<th scope="col">Workspace</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, e := range v.Rows {
+						<tr>
+							<td class="tabular-nums whitespace-nowrap">{ e.At.Format("2006-01-02 15:04") }</td>
+							<td>{ deref(e.ActorEmail) }</td>
+							<td><code class="text-xs">{ e.Action }</code></td>
+							<td class="break-all">{ e.Target }</td>
+							<td>{ deref(e.WorkspaceSlug) }</td>
+						</tr>
+					}
+					if len(v.Rows) == 0 {
+						<tr><td colspan="5" class="text-center opacity-70">Nothing recorded yet.</td></tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		@web.Pager(v.Page, listTarget)
+	</div>
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return "–"
+	}
+	return *s
+}

@@ -1,0 +1,275 @@
+package workspaces
+
+import (
+	"context"
+	"net/url"
+	"strconv"
+
+	"github.com/riadafridishibly/quickstack/internal/account"
+	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/tenant"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+// Layout frames every page inside a workspace. Features add their pages to
+// the sidebar here.
+templ Layout(title string) {
+	@web.ShellLayout(title, shell(ctx)) {
+		{ children... }
+	}
+}
+
+func shell(ctx context.Context) web.Shell {
+	ws, u := tenant.From(ctx), auth.From(ctx)
+	main := []web.NavItem{
+		{Label: "Overview", Href: ws.URL(""), Exact: true},
+		{Label: "Projects", Href: ws.URL("/projects")},
+	}
+	manage := []web.NavItem{{Label: "Members", Href: ws.URL("/members")}}
+	if auth.CanIn(ctx, auth.ManageWorkspace) {
+		manage = append(manage, web.NavItem{Label: "Settings", Href: ws.URL("/settings")})
+	}
+	if ws.Public {
+		manage = append(manage, web.NavItem{Label: "Public roadmap ↗", Href: "/p/" + ws.Slug})
+	}
+	s := web.Shell{
+		Name:       ws.Name,
+		NameHref:   ws.URL(""),
+		Kind:       "Workspace",
+		Sections:   []web.NavSection{{Items: main}, {Title: "Workspace", Items: manage}},
+		Links:      []web.NavItem{{Label: "All workspaces", Href: auth.HomePath, Exact: true}, {Label: "Your account", Href: "/account"}},
+		LogoutPath: auth.LogoutPath,
+	}
+	if u != nil {
+		s.UserName, s.UserEmail = u.Name, u.Email
+		if auth.CanPlatform(u.PlatformRole, auth.ViewPlatform) {
+			s.Links = append(s.Links, web.NavItem{Label: "Platform admin", Href: "/admin"})
+		}
+	}
+	return s
+}
+
+templ listPage(ws []db.ListMyWorkspacesRow, f workspaceForm) {
+	@account.Layout("Workspaces") {
+		@web.PageHeader("Workspaces")
+		<div class="grid gap-6 lg:grid-cols-[1fr_22rem]">
+			<div>
+				if len(ws) == 0 {
+					@web.Empty("You’re not in a workspace yet", "Create one, or ask someone to invite you to theirs.")
+				} else {
+					<ul class="grid gap-3 sm:grid-cols-2">
+						for _, w := range ws {
+							<li>
+								<a href={ templ.SafeURL("/w/" + w.Slug) } class={ web.PaddedCardClass, "block hover:border-primary" }>
+									<p class="font-semibold">{ w.Name }</p>
+									<p class="mt-1 text-sm opacity-70">{ auth.Role(w.Role).Label() } · { plural(w.Members, "member", "members") }</p>
+								</a>
+							</li>
+						}
+					</ul>
+				}
+			</div>
+			@createForm(f)
+		</div>
+	}
+}
+
+templ createForm(f workspaceForm) {
+	<form id="create-workspace" method="post" action={ templ.SafeURL(auth.HomePath) } hx-post={ auth.HomePath } hx-swap="outerHTML" novalidate class={ web.PaddedCardClass, "space-y-5 self-start" }>
+		<h2 class="text-lg font-semibold">New workspace</h2>
+		@web.Field("Name", "name", f.Errors["name"]) {
+			<input type="text" { web.InputAttrs("name", f.Errors["name"])... } value={ f.Name } required class={ web.InputClass }/>
+		}
+		@web.Field("URL", "slug", f.Errors["slug"]) {
+			<label class="input w-full aria-[invalid=true]:input-error" aria-invalid={ strconv.FormatBool(f.Errors["slug"] != "") }>
+				<span class="opacity-60">/w/</span>
+				<input type="text" id="slug" name="slug" value={ f.Slug } placeholder="made from the name" pattern="[a-z0-9]+(-[a-z0-9]+)*" class="grow"/>
+			</label>
+		}
+		<button type="submit" class={ web.ButtonClass }>Create workspace</button>
+	</form>
+}
+
+templ settingsPage(f workspaceForm, saved bool) {
+	@Layout("Settings") {
+		@web.PageHeader("Settings")
+		if saved {
+			@web.Flash("Settings saved.")
+		}
+		<form method="post" action={ templ.SafeURL(tenant.From(ctx).URL("/settings")) } novalidate class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
+			@web.Field("Name", "name", f.Errors["name"]) {
+				<input type="text" { web.InputAttrs("name", f.Errors["name"])... } value={ f.Name } required class={ web.InputClass }/>
+			}
+			@web.Field("URL", "slug", f.Errors["slug"]) {
+				<input type="text" { web.InputAttrs("slug", f.Errors["slug"])... } value={ f.Slug } required pattern="[a-z0-9]+(-[a-z0-9]+)*" class={ web.InputClass }/>
+			}
+			<label class="flex items-start gap-3">
+				<input type="checkbox" name="public" checked?={ f.Public } class="checkbox mt-0.5"/>
+				<span>
+					<span class="block font-medium">Public roadmap</span>
+					<span class="block text-sm opacity-70">Anyone can see the projects you mark public, and their tasks, at /p/{ f.Slug }.</span>
+				</span>
+			</label>
+			<button type="submit" class={ web.ButtonClass }>Save</button>
+		</form>
+	}
+}
+
+templ membersPage(v membersView) {
+	@Layout("Members") {
+		@web.PageHeader("Members")
+		if v.Error != "" {
+			<p role="alert" class="alert alert-error alert-soft mb-6">{ v.Error }</p>
+		}
+		<div class="grid gap-6 lg:grid-cols-[1fr_22rem]">
+			<div class={ web.CardClass, "overflow-x-auto" }>
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">Name</th>
+							<th scope="col">Role</th>
+							<th scope="col"><span class="sr-only">Actions</span></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, m := range v.Members {
+							@memberRow(m)
+						}
+					</tbody>
+				</table>
+			</div>
+			if auth.CanIn(ctx, auth.ManageMembers) {
+				@invitations(v)
+			}
+		</div>
+	}
+}
+
+// memberRow is one member. Its role form posts on change with htmx and has
+// a Save button for when JavaScript is off.
+templ memberRow(m db.ListMembersRow) {
+	{{ ws, me := tenant.From(ctx), auth.From(ctx) }}
+	{{ isOwner := auth.Role(m.Role) == auth.Owner }}
+	{{ canEdit := auth.CanIn(ctx, auth.ManageMembers) && (!isOwner || auth.RoleFrom(ctx) == auth.Owner) }}
+	{{ base := ws.URL("/members/" + strconv.FormatInt(m.ID, 10)) }}
+	<tr data-member={ m.Email }>
+		<td>
+			<p class="font-medium">{ m.Name }</p>
+			<p class="text-sm opacity-60">{ m.Email }</p>
+		</td>
+		<td>
+			if canEdit {
+				<form method="post" action={ templ.SafeURL(base + "/role") } hx-post={ base + "/role" } hx-trigger="change" hx-target="closest tr" hx-swap="outerHTML" class="flex items-center gap-2">
+					<select name="role" aria-label={ "Role of " + m.Name } class="select select-sm w-32">
+						for _, r := range auth.Roles {
+							if r != auth.Owner || auth.RoleFrom(ctx) == auth.Owner {
+								<option value={ string(r) } selected?={ string(r) == m.Role }>{ r.Label() }</option>
+							}
+						}
+					</select>
+					<button type="submit" class="btn btn-sm btn-ghost [.js_&]:hidden">Save</button>
+				</form>
+			} else {
+				<span class="badge badge-soft">{ auth.Role(m.Role).Label() }</span>
+			}
+		</td>
+		<td class="text-right">
+			if me != nil && me.ID == m.ID {
+				<form method="post" action={ templ.SafeURL(base + "/delete") }>
+					<button type="submit" class={ web.DangerButtonClass }>Leave</button>
+				</form>
+			} else if canEdit {
+				<form method="post" action={ templ.SafeURL(base + "/delete") } hx-post={ base + "/delete" } hx-target="closest tr" hx-swap="outerHTML" hx-confirm={ "Remove " + m.Name + " from the workspace?" }>
+					<button type="submit" class={ web.DangerButtonClass }>Remove</button>
+				</form>
+			}
+		</td>
+	</tr>
+}
+
+templ invitations(v membersView) {
+	{{ ws := tenant.From(ctx) }}
+	<section id={ invitationsTarget } class="space-y-6 self-start">
+		<form method="post" action={ templ.SafeURL(ws.URL("/members/invite")) } hx-post={ ws.URL("/members/invite") } hx-target={ "#" + invitationsTarget } hx-swap="outerHTML" novalidate class={ web.PaddedCardClass, "space-y-5" }>
+			<h2 class="text-lg font-semibold">Invite someone</h2>
+			if v.Invited != "" {
+				<p role="status" class="alert alert-success alert-soft">Invitation sent to { v.Invited }.</p>
+			}
+			@web.Field("Email", "email", v.Invite.Errors["email"]) {
+				<input type="email" { web.InputAttrs("email", v.Invite.Errors["email"])... } value={ v.Invite.Email } required class={ web.InputClass }/>
+			}
+			@web.Field("Role", "role", v.Invite.Errors["role"]) {
+				<select { web.InputAttrs("role", v.Invite.Errors["role"])... } class="select w-full">
+					for _, r := range auth.InviteRoles {
+						<option value={ string(r) } selected?={ r == v.Invite.Role }>{ r.Label() }</option>
+					}
+				</select>
+			}
+			<button type="submit" class={ web.ButtonClass }>Send invitation</button>
+		</form>
+		if len(v.Invitations) > 0 {
+			<div class={ web.PaddedCardClass }>
+				<h2 class="font-semibold">Waiting to accept</h2>
+				<ul class="mt-3 divide-y divide-base-300">
+					for _, i := range v.Invitations {
+						{{ revoke := ws.URL("/invitations/" + strconv.FormatInt(i.ID, 10) + "/delete") }}
+						<li class="flex items-center justify-between gap-2 py-2">
+							<div class="min-w-0">
+								<p class="truncate text-sm font-medium">{ i.Email }</p>
+								<p class="text-xs opacity-60">{ auth.Role(i.Role).Label() } · expires { i.ExpiresAt.Format("Jan 2") }</p>
+							</div>
+							<form method="post" action={ templ.SafeURL(revoke) } hx-post={ revoke } hx-target="closest li" hx-swap="outerHTML">
+								<button type="submit" class={ web.DangerButtonClass }>Revoke</button>
+							</form>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+	</section>
+}
+
+templ invitationPage(v invitationView) {
+	@web.Layout("Join " + v.Invitation.WorkspaceName) {
+		{{ inv := v.Invitation }}
+		{{ here := "/invite/" + v.Token }}
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Join { inv.WorkspaceName }</h1>
+			<div class={ web.PaddedCardClass, "space-y-4" }>
+				<p>You’re invited to join <strong>{ inv.WorkspaceName }</strong> as { auth.Role(inv.Role).Label() }.</p>
+				switch  {
+					case v.SignedInAs == "":
+						<p class="text-sm opacity-70">The invitation is for { inv.Email }.</p>
+						<a href={ templ.SafeURL(auth.SignupPath + "?email=" + url.QueryEscape(inv.Email) + "&next=" + url.QueryEscape(here)) } class={ web.ButtonClass, "w-full" }>Create an account</a>
+						<a href={ templ.SafeURL(auth.LoginPath + "?email=" + url.QueryEscape(inv.Email) + "&next=" + url.QueryEscape(here)) } class={ web.SecondaryButtonClass, "w-full" }>I have an account</a>
+					case v.WrongPerson:
+						<p role="alert" class="alert alert-warning alert-soft">The invitation is for { inv.Email }, but you’re signed in as { v.SignedInAs }. Sign out, then open the link again.</p>
+						<form method="post" action={ templ.SafeURL(auth.LogoutPath) }>
+							<button type="submit" class={ web.SecondaryButtonClass, "w-full" }>Sign out</button>
+						</form>
+					default:
+						<form method="post" action={ templ.SafeURL(here) }>
+							<button type="submit" class={ web.ButtonClass, "w-full" }>Join workspace</button>
+						</form>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ invitationExpiredPage() {
+	@web.Layout("Invitation expired") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">This invitation has expired</h1>
+			<p class={ web.PaddedCardClass, "text-sm" }>Invitations work once, for a week. Ask the person who invited you to send a new one.</p>
+		</div>
+	}
+}
+
+func plural(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return web.Count(n) + " " + many
+}

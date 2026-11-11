@@ -1,0 +1,296 @@
+package projects
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/tenant"
+	"github.com/riadafridishibly/quickstack/internal/web"
+	"github.com/riadafridishibly/quickstack/internal/workspaces"
+)
+
+templ listPage(v listView) {
+	@workspaces.Layout("Projects") {
+		@web.PageHeader("Projects") {
+			if auth.CanIn(ctx, auth.ManageProjects) {
+				<a href={ templ.SafeURL(tenant.From(ctx).URL("/projects/new")) } class={ web.ButtonClass }>New project</a>
+			}
+		}
+		{{ url := tenant.From(ctx).URL("/projects") }}
+		<form
+			method="get"
+			action={ templ.SafeURL(url) }
+			hx-get={ url }
+			hx-trigger="input changed delay:250ms from:input[name=q], change from:select, submit"
+			hx-target={ "#" + listTarget }
+			hx-swap="outerHTML"
+			hx-push-url="true"
+			role="search"
+			class="mb-4 flex flex-wrap items-center gap-2"
+		>
+			<label class="input min-w-0 flex-1">
+				<span class="sr-only">Search projects</span>
+				<input type="search" name="q" value={ v.Query } placeholder="Search projects" autocomplete="off"/>
+			</label>
+			<select name="status" aria-label="Status" class="select w-40">
+				<option value="active" selected?={ v.Status == StatusActive }>Active</option>
+				<option value="archived" selected?={ v.Status == StatusArchived }>Archived</option>
+				<option value="all" selected?={ v.Status == "all" }>All</option>
+			</select>
+			<button type="submit" class={ web.SecondaryButtonClass, "[.js_&]:hidden" }>Search</button>
+		</form>
+		@projectList(v)
+	}
+}
+
+templ projectList(v listView) {
+	<div id={ listTarget } class="transition-opacity [&.htmx-request]:opacity-60">
+		if len(v.Projects) == 0 {
+			if v.Query != "" {
+				@web.Empty("No projects match “"+v.Query+"”", "Try another search, or look in all projects.")
+			} else {
+				@web.Empty("No projects yet", "Projects hold the tasks your team works on.")
+			}
+		} else {
+			@web.PageCount(v.Page, "projects")
+			<div class={ web.CardClass, "overflow-x-auto" }>
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">Name</th>
+							<th scope="col" class="text-right">Open tasks</th>
+							<th scope="col" class="max-sm:hidden">Updated</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, p := range v.Projects {
+							<tr>
+								<td>
+									<a href={ templ.SafeURL(projectURL(ctx, p.ID)) } class={ web.LinkClass }>{ p.Name }</a>
+									if p.Status == StatusArchived {
+										<span class="badge badge-soft badge-sm ml-2">Archived</span>
+									}
+									if p.Public {
+										<span class="badge badge-soft badge-info badge-sm ml-2">Public</span>
+									}
+								</td>
+								<td class="text-right tabular-nums">{ web.Count(p.OpenTasks) } <span class="opacity-50">/ { web.Count(p.AllTasks) }</span></td>
+								<td class="max-sm:hidden text-sm opacity-70">{ p.UpdatedAt.Format("Jan 2, 2006") }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+		@web.Pager(v.Page, listTarget)
+	</div>
+}
+
+templ projectFormPage(id int64, f projectForm) {
+	{{ title := "New project" }}
+	if id != 0 {
+		{{ title = "Edit project" }}
+	}
+	@workspaces.Layout(title) {
+		@web.PageHeader(title)
+		@projectFormEl(id, f)
+		if id != 0 {
+			<details class={ web.PaddedCardClass, "mt-6 max-w-xl" }>
+				<summary class="cursor-pointer font-medium text-error">Delete project</summary>
+				<p class="mt-3 text-sm opacity-80">This deletes the project and all of its tasks. It can’t be undone; archive the project to hide it instead.</p>
+				<form method="post" action={ templ.SafeURL(projectURL(ctx, id) + "/delete") } class="mt-4">
+					<button type="submit" class="btn btn-error">Delete project</button>
+				</form>
+			</details>
+		}
+	}
+}
+
+templ projectFormEl(id int64, f projectForm) {
+	{{ action := tenant.From(ctx).URL("/projects") }}
+	if id != 0 {
+		{{ action = projectURL(ctx, id) }}
+	}
+	<form method="post" action={ templ.SafeURL(action) } hx-post={ action } hx-swap="outerHTML" novalidate class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
+		@web.Field("Name", "name", f.Errors["name"]) {
+			<input type="text" { web.InputAttrs("name", f.Errors["name"])... } value={ f.Name } required maxlength="80" class={ web.InputClass }/>
+		}
+		@web.Field("Description", "description", f.Errors["description"]) {
+			<textarea { web.InputAttrs("description", f.Errors["description"])... } rows="4" class={ web.TextareaClass }>{ f.Description }</textarea>
+		}
+		@web.Field("Status", "status", f.Errors["status"]) {
+			<select { web.InputAttrs("status", f.Errors["status"])... } class="select w-full">
+				<option value="active" selected?={ f.Status == StatusActive }>Active</option>
+				<option value="archived" selected?={ f.Status == StatusArchived }>Archived</option>
+			</select>
+		}
+		<label class="flex items-start gap-3">
+			<input type="checkbox" name="public" checked?={ f.Public } class="checkbox mt-0.5"/>
+			<span>
+				<span class="block font-medium">Show on the public roadmap</span>
+				<span class="block text-sm opacity-70">Only if the workspace’s roadmap is public, in Settings.</span>
+			</span>
+		</label>
+		<div class="flex gap-2">
+			<button type="submit" class={ web.ButtonClass }>
+				if id == 0 {
+					Create project
+				} else {
+					Save
+				}
+			</button>
+			if id != 0 {
+				<a href={ templ.SafeURL(projectURL(ctx, id)) } class="btn btn-ghost">Cancel</a>
+			}
+		</div>
+	</form>
+}
+
+templ projectPage(v projectView) {
+	@workspaces.Layout(v.Project.Name) {
+		<nav aria-label="Breadcrumb" class="mb-1 text-sm opacity-70">
+			<a href={ templ.SafeURL(tenant.From(ctx).URL("/projects")) } class="link-hover">Projects</a>
+		</nav>
+		@web.PageHeader(v.Project.Name) {
+			if v.Project.Status == StatusArchived {
+				<span class="badge badge-soft">Archived</span>
+			}
+			if auth.CanIn(ctx, auth.ManageProjects) {
+				<a href={ templ.SafeURL(projectURL(ctx, v.Project.ID) + "/edit") } class={ web.SecondaryButtonClass }>Edit project</a>
+			}
+		}
+		if v.Project.Description != "" {
+			<p class="-mt-3 mb-6 max-w-3xl whitespace-pre-line opacity-80">{ v.Project.Description }</p>
+		}
+		@board(v)
+	}
+}
+
+// board is the task form and the three columns. It is also the htmx
+// fragment that adding or moving a task swaps in. For people who may edit,
+// the columns sit inside <task-board>, which replaces them with a version
+// that supports drag and drop.
+templ board(v projectView) {
+	{{ base := projectURL(ctx, v.Project.ID) }}
+	{{ canEdit := auth.CanIn(ctx, auth.EditTasks) }}
+	<div id={ boardTarget } class="space-y-4">
+		if canEdit {
+			@newTaskForm(v, base)
+		}
+		if canEdit {
+			@templ.JSONScript("board-data", newBoardData(base, v.Tasks))
+			<task-board data-json="board-data">
+				@staticColumns(v, base, true)
+			</task-board>
+		} else {
+			@staticColumns(v, base, false)
+		}
+	</div>
+}
+
+templ newTaskForm(v projectView, base string) {
+	<form method="post" action={ templ.SafeURL(base + "/tasks") } hx-post={ base + "/tasks" } hx-target={ "#" + boardTarget } hx-swap="outerHTML" novalidate class={ web.PaddedCardClass, "grid gap-3 sm:grid-cols-[1fr_12rem_10rem_auto] sm:items-end" }>
+		@web.Field("New task", "title", v.Form.Errors["title"]) {
+			<input type="text" { web.InputAttrs("title", v.Form.Errors["title"])... } value={ v.Form.Title } placeholder="What needs doing?" required maxlength="200" class={ web.InputClass }/>
+		}
+		@web.Field("Assignee", "assignee", v.Form.Errors["assignee"]) {
+			@assigneeSelect(v.Members, v.Form.Assignee, v.Form.Errors["assignee"])
+		}
+		@web.Field("Due", "due", v.Form.Errors["due"]) {
+			<input type="date" { web.InputAttrs("due", v.Form.Errors["due"])... } value={ v.Form.Due } class={ web.InputClass }/>
+		}
+		<button type="submit" class={ web.ButtonClass }>Add task</button>
+	</form>
+}
+
+templ assigneeSelect(members []db.ListMembersRow, selected, errMsg string) {
+	<select { web.InputAttrs("assignee", errMsg)... } class="select w-full">
+		<option value="">Nobody</option>
+		for _, m := range members {
+			{{ id := strconv.FormatInt(m.ID, 10) }}
+			<option value={ id } selected?={ id == selected }>{ m.Name }</option>
+		}
+	</select>
+}
+
+// staticColumns is the board without JavaScript. Each card of an editor has
+// a small form to move it to another column.
+templ staticColumns(v projectView, base string, canEdit bool) {
+	<div class="grid gap-4 md:grid-cols-3">
+		for _, c := range columns(v.Tasks) {
+			<section class="rounded-box bg-base-300/40 p-3" data-column={ c.Status }>
+				<h2 class="mb-3 flex items-center justify-between px-1 text-sm font-semibold">
+					{ StatusLabel(c.Status) }
+					<span class="badge badge-sm badge-ghost tabular-nums">{ strconv.Itoa(len(c.Tasks)) }</span>
+				</h2>
+				<ul class="space-y-2">
+					for _, t := range c.Tasks {
+						{{ taskURL := base + "/tasks/" + strconv.FormatInt(t.ID, 10) }}
+						<li class="rounded-box border border-base-300 bg-base-100 p-3 shadow-xs" data-task={ t.Title }>
+							if canEdit {
+								<a href={ templ.SafeURL(taskURL) } class="font-medium link-hover">{ t.Title }</a>
+							} else {
+								<p class="font-medium">{ t.Title }</p>
+							}
+							@taskMeta(t.AssigneeName, t.DueOn)
+							if canEdit {
+								<form method="post" action={ templ.SafeURL(taskURL + "/move") } class="mt-2 flex items-center gap-2">
+									<select name="status" aria-label={ "Move " + t.Title } class="select select-xs w-auto">
+										for _, s := range Statuses {
+											<option value={ s } selected?={ s == t.Status }>{ StatusLabel(s) }</option>
+										}
+									</select>
+									<button type="submit" class="btn btn-xs btn-ghost">Move</button>
+								</form>
+							}
+						</li>
+					}
+				</ul>
+			</section>
+		}
+	</div>
+}
+
+templ taskMeta(assignee *string, due *time.Time) {
+	if assignee != nil || due != nil {
+		<p class="mt-1 flex flex-wrap gap-x-3 text-xs opacity-70">
+			if assignee != nil {
+				<span>{ *assignee }</span>
+			}
+			if due != nil {
+				<span>Due { due.Format("Jan 2") }</span>
+			}
+		</p>
+	}
+}
+
+templ taskPage(v taskView) {
+	{{ base := projectURL(ctx, v.ProjectID) }}
+	{{ taskURL := base + "/tasks/" + strconv.FormatInt(v.TaskID, 10) }}
+	@workspaces.Layout("Edit task") {
+		<nav aria-label="Breadcrumb" class="mb-1 text-sm opacity-70">
+			<a href={ templ.SafeURL(base) } class="link-hover">{ v.ProjectName }</a>
+		</nav>
+		@web.PageHeader("Edit task")
+		<form method="post" action={ templ.SafeURL(taskURL) } novalidate class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
+			@web.Field("Title", "title", v.Form.Errors["title"]) {
+				<input type="text" { web.InputAttrs("title", v.Form.Errors["title"])... } value={ v.Form.Title } required maxlength="200" class={ web.InputClass }/>
+			}
+			@web.Field("Assignee", "assignee", v.Form.Errors["assignee"]) {
+				@assigneeSelect(v.Members, v.Form.Assignee, v.Form.Errors["assignee"])
+			}
+			@web.Field("Due", "due", v.Form.Errors["due"]) {
+				<input type="date" { web.InputAttrs("due", v.Form.Errors["due"])... } value={ v.Form.Due } class={ web.InputClass }/>
+			}
+			<div class="flex gap-2">
+				<button type="submit" class={ web.ButtonClass }>Save</button>
+				<a href={ templ.SafeURL(base) } class="btn btn-ghost">Cancel</a>
+			</div>
+		</form>
+		<form method="post" action={ templ.SafeURL(taskURL + "/delete") } class="mt-4">
+			<button type="submit" class={ web.DangerButtonClass }>Delete task</button>
+		</form>
+	}
+}

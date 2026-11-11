@@ -1,0 +1,17 @@
+/node_modules/
+/bin/
+/tmp/
+/test-results/
+/playwright-report/
+/.env
+
+# Vite build output, embedded by internal/web/assets.go. The .gitkeep lets
+# `go build` work before the first frontend build.
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+
+# templ watch-mode artifacts
+*_templ.txt
+
+# Playwright sessions saved by e2e/owner.setup.ts
+/e2e/.auth/
