@@ -34,7 +34,7 @@ db-reset: ## Drop and recreate the quickstack database
 	psql "$(PG_ADMIN_URL)" -qc "DROP DATABASE IF EXISTS quickstack WITH (FORCE)"
 	@$(MAKE) db-setup
 
-db-up: ## Start PostgreSQL 17 in Docker instead of a local server
+db-up: ## Start PostgreSQL 18 in Docker instead of a local server
 	docker compose up -d --wait db
 
 psql: ## Open psql as the app role

@@ -2,7 +2,6 @@
    storefront or marketing site would, and shares only the components in
    internal/web with the dashboards. */
 @import "tailwindcss" source(none);
-@import "./htmx.css";
 @source "../../internal/public/**/*.{templ,go}";
 @source "../../internal/web/**/*.{templ,go}";
 @source "./**/*.{ts,tsx}";

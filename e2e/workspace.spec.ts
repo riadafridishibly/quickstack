@@ -27,8 +27,12 @@ test("invite someone, who signs up from the email and joins", async ({ page, bro
   await page.goto(`${base}/members`);
   const row = page.locator('tr[data-member="bo@example.com"]');
   await expect(row).toBeVisible();
+  // The select shows the new value at once; wait for the save before reloading.
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.url().endsWith("/role"),
+  );
   await row.getByLabel("Role of Bo").selectOption("viewer");
-  await expect(row.getByLabel("Role of Bo")).toHaveValue("viewer");
+  expect((await saved).ok()).toBe(true);
   await page.reload();
   await expect(
     page.locator('tr[data-member="bo@example.com"]').getByLabel("Role of Bo"),

@@ -30,3 +30,21 @@ func TestHandleCanceled(t *testing.T) {
 		t.Errorf("status %d, want 500", w.Code)
 	}
 }
+
+func TestHXTarget(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ request, target, history, want string }{
+		{"true", "div#admin-list", "", "admin-list"},
+		{"true", "form", "", ""},
+		{"true", "body", "true", ""},
+		{"", "div#admin-list", "", ""},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("HX-Request", tc.request)
+		r.Header.Set("HX-Target", tc.target)
+		r.Header.Set("HX-History-Restore-Request", tc.history)
+		if got := HXTarget(r); got != tc.want {
+			t.Errorf("%+v: got %q, want %q", tc, got, tc.want)
+		}
+	}
+}

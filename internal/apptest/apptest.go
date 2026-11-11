@@ -66,7 +66,7 @@ func (s *Server) Do(r Req) *httptest.ResponseRecorder {
 	if r.Target != "" {
 		req.Header.Set("HX-Request", "true")
 		if r.Target != "-" {
-			req.Header.Set("HX-Target", r.Target)
+			req.Header.Set("HX-Target", "div#"+r.Target)
 		}
 	}
 	for k, v := range r.Header {

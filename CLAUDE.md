@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Quickstack is a template for server-rendered Go web apps with several dashboards: copy it, rename it with `scripts/rename`, delete the samples you don't need. One binary holds the public site, sign-in, and three dashboards: a workspace's (`/w/{ws}`), a person's account (`/account`), and the platform admin (`/admin`). Pages are server-rendered with templ, htmx handles server round-trips, and Preact islands handle client-side state. The frontend is embedded in the binary. PostgreSQL 17 holds the data, with row-level security per workspace, and River runs background jobs. Node runs only at build time.
+Quickstack is a template for server-rendered Go web apps with several dashboards: copy it, rename it with `scripts/rename`, delete the samples you don't need. One binary holds the public site, sign-in, and three dashboards: a workspace's (`/w/{ws}`), a person's account (`/account`), and the platform admin (`/admin`). Pages are server-rendered with templ, htmx handles server round-trips, and Preact islands handle client-side state. The frontend is embedded in the binary. PostgreSQL 18 holds the data, with row-level security per workspace, and River runs background jobs. Node runs only at build time.
 
 Design notes and decisions live in the issue tracker, not in the repo. Keep code comments to what is necessary.
 
@@ -110,6 +110,7 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 - Charts: build a `chart.Data` and render `@chart.Card(d)`. They need no JavaScript; tooltips show on hover with CSS.
 - Avoid daisyUI `radial-progress` and `countdown`: they need inline `style`, which the CSP blocks.
 - The CSP blocks inline `<script>` blocks, `style="..."`, `onclick=`-style handlers, and `hx-on:*`. JavaScript goes in `frontend/src/`.
+- htmx is version 4 (docs at four.htmx.org; most examples online are for 2). Attributes don't inherit: put `hx-target`, `hx-swap` and the rest on the element that sends the request, or mark a parent's with `:inherited` (`hx-target:inherited`). Events have colon names (`htmx:after:swap`).
 - `app.css` scans `internal/**/*.{templ,go}` except `internal/public/`; `public.css` scans `internal/public/` and `internal/web/`. Both scan `frontend/src/**`. Write class names as complete literal strings; Tailwind can't see classes assembled at runtime.
 
 ## Islands

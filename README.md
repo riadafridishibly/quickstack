@@ -3,8 +3,8 @@
 A starting point for Go web apps with several dashboards: one binary, PostgreSQL, server-rendered pages, and as little JavaScript as each screen needs.
 
 - **Go** with `net/http`, **templ** for HTML, **sqlc** for queries, **goose** migrations, **River** jobs
-- **htmx** for server round-trips, **Preact** islands for client state, **Tailwind 4** with **daisyUI 5**, built by **Vite** and embedded
-- **PostgreSQL 17** with row-level security per workspace
+- **htmx 4** for server round-trips, **Preact** islands for client state, **Tailwind 4** with **daisyUI 5**, built by **Vite** and embedded
+- **PostgreSQL 18** with row-level security per workspace
 
 It comes with:
 

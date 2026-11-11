@@ -2,7 +2,7 @@
   "name": "quickstack",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=26"
   },
@@ -14,17 +14,17 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "htmx.org": "2.0.11",
-    "preact": "11.1.0"
+    "htmx.org": "4.0.1",
+    "preact": "11.2.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.4",
-    "@playwright/test": "1.64.1",
+    "@biomejs/biome": "2.6.6",
+    "@playwright/test": "1.65.0",
     "@tailwindcss/vite": "4.3.3",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "daisyui": "5.7.50",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
-    "vite": "8.3.5"
+    "vite": "8.3.7"
   }
 }

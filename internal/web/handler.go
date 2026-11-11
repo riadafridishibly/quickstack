@@ -74,12 +74,14 @@ func IsHTMX(r *http.Request) bool {
 }
 
 // HXTarget returns the id of the element an htmx request will swap into, or
-// "" for non-htmx requests. Use it when one URL feeds several targets.
+// "" for non-htmx requests and targets without an id. Use it when one URL
+// feeds several targets. htmx sends the target as tag#id.
 func HXTarget(r *http.Request) string {
 	if !IsHTMX(r) {
 		return ""
 	}
-	return r.Header.Get("HX-Target")
+	_, id, _ := strings.Cut(r.Header.Get("HX-Target"), "#")
+	return id
 }
 
 // Redirect sends the browser to url after a successful POST: an HX-Redirect

@@ -7,29 +7,21 @@ document.documentElement.classList.add("js");
 // first paint, flashing unstyled HTML. The layout links it instead
 // (internal/web/assets.go).
 
-// The CSP forbids inline styles and eval: .htmx-indicator styles live in
-// app.css, and hx-on:* / js: expressions are disabled.
-htmx.config.includeIndicatorStyles = false;
-htmx.config.allowEval = false;
-// Handlers return fragments for HX-Request; a history restore must get the full page.
-htmx.config.historyRestoreAsHxRequest = false;
-// Swap 422 so handlers can re-render a form with its validation errors,
-// and 429 so they can say to wait.
-htmx.config.responseHandling = [
-  { code: "204", swap: false },
-  { code: "[23]..", swap: true },
-  { code: "422", swap: true },
-  { code: "429", swap: true },
-  { code: "[45]..", swap: false, error: true },
-];
+// htmx swaps every status but these. 422 and 429 swap, so handlers can
+// re-render a form with its validation errors or say to wait. The type
+// says number[], but htmx also matches patterns like "5xx".
+const swapped = new Set([422, 429]);
+htmx.config.noSwap = [204, 304, "40x", "41x", "5xx"] as unknown as number[];
 
 const requestError = () => document.getElementById("request-error");
-document.addEventListener("htmx:beforeRequest", () => {
+const showRequestError = () => requestError()?.removeAttribute("hidden");
+document.addEventListener("htmx:before:request", () => {
   requestError()?.setAttribute("hidden", "");
 });
-for (const event of ["htmx:responseError", "htmx:sendError"]) {
-  document.addEventListener(event, () => requestError()?.removeAttribute("hidden"));
-}
+document.addEventListener("htmx:response:error", (e) => {
+  if (!swapped.has(e.detail.ctx.response?.status ?? 0)) showRequestError();
+});
+document.addEventListener("htmx:error", showRequestError);
 
 // Islands: frontend/src/islands/<tag-name>.tsx (or .ts) defines the
 // <tag-name> custom element. Each module loads the first time its tag

@@ -1,5 +1,4 @@
 @import "tailwindcss" source(none);
-@import "./htmx.css";
 @source "../../internal/**/*.{templ,go}";
 @source not "../../internal/public";
 @source "./**/*.{ts,tsx}";
