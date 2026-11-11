@@ -38,3 +38,7 @@ make setup db-setup check
 ```
 
 Then delete the samples you don't need (`internal/projects`, `internal/insights`, `internal/public`). `CLAUDE.md` says how, and how to add features.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
