@@ -12,7 +12,11 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
-const QueueEmail = "email"
+const (
+	QueueEmail = "email"
+	// QueueMedia runs libvips, which uses every core for one image.
+	QueueMedia = "media"
+)
 
 type Client struct {
 	*river.Client[pgx.Tx]
@@ -40,6 +44,7 @@ func New(pool *pgxpool.Pool, s *Setup) (*Client, error) {
 		cfg.Queues = map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: 10},
 			QueueEmail:         {MaxWorkers: 5},
+			QueueMedia:         {MaxWorkers: 2},
 		}
 	}
 	c, err := river.NewClient(riverpgxv5.New(pool), cfg)

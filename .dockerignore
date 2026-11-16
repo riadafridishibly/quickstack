@@ -1,0 +1,9 @@
+.git
+.env
+node_modules
+bin
+tmp
+test-results
+playwright-report
+e2e/.auth
+internal/web/dist

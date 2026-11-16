@@ -17,5 +17,23 @@ services:
       interval: 2s
       retries: 30
 
+  # S3-compatible storage for trying the s3:// blob store; `make s3-up`.
+  s3:
+    image: chrislusf/seaweedfs:4.50
+    profiles: [s3]
+    command: server -s3 -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=128
+    environment:
+      AWS_ACCESS_KEY_ID: ${QUICKSTACK_S3_KEY:-quickstack}
+      AWS_SECRET_ACCESS_KEY: ${QUICKSTACK_S3_SECRET:-quickstack-secret}
+    volumes:
+      - s3:/data
+    ports:
+      - "127.0.0.1:${QUICKSTACK_S3_PORT:-8333}:8333"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8333/healthz"]
+      interval: 2s
+      retries: 30
+
 volumes:
   db:
+  s3:
