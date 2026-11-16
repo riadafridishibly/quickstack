@@ -15,7 +15,7 @@ RUN pnpm run build
 FROM golang:1.27-trixie AS build
 ARG TARGETARCH
 WORKDIR /src
-COPY scripts/vips-kit scripts/
+COPY scripts/vips-kit scripts/install scripts/
 RUN scripts/vips-kit linux-$TARGETARCH /vips
 COPY go.mod go.sum ./
 RUN go mod download
@@ -26,15 +26,14 @@ RUN mkdir -p /app/bin /app/lib /app/share \
 	&& PKG_CONFIG_LIBDIR=/vips/lib/pkgconfig CGO_LDFLAGS='-Wl,-rpath,$ORIGIN/../lib' \
 		go build -trimpath -ldflags='-s -w' -o /app/bin/quickstack ./cmd/quickstack \
 	&& cp -a /vips/lib/*.so.* /app/lib/ \
-	&& cp -R /vips/share/licenses /app/share/
+	&& cp -R /vips/share/licenses /app/share/ \
+	&& cp scripts/install /app/install
 
 FROM debian:trixie-slim
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates \
-	&& rm -rf /var/lib/apt/lists/* \
-	&& useradd --system --home-dir /var/lib/quickstack quickstack \
-	&& install -d -o quickstack -g quickstack /var/lib/quickstack/media
-COPY --from=build /app /opt/quickstack
+	&& rm -rf /var/lib/apt/lists/*
+RUN --mount=type=bind,from=build,source=/app,target=/release /release/install
 USER quickstack
 ENV QUICKSTACK_ADDR=:8360
 EXPOSE 8360

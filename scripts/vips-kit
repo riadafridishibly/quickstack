@@ -37,7 +37,5 @@ else
 fi
 rm -rf "$dir"
 mkdir -p "$dir"
-# The files belong to whoever unpacks them, not to the uid that built the
-# kit.
-tar --no-same-owner -xzf "$tmp/$file" -C "$dir"
+tar -xzf "$tmp/$file" -C "$dir"
 echo "$version-$target" >"$dir/.kit"

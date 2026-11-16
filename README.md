@@ -40,7 +40,7 @@ Releases carry their own libvips, so servers don't need it installed. `make dist
 make dist TARGET=linux-amd64     # or linux-arm64, freebsd-amd64
 ```
 
-`dist/quickstack-linux-amd64.tar.gz` holds `bin/quickstack`, the libraries in `lib/`, and their licences in `share/licenses/`. Unpack it as root into a directory only root can write to, such as `/opt/quickstack`, and run `bin/quickstack` as an unprivileged user. The binary loads its libraries from `../lib`, so whoever can write there can run code as the app. Linux servers need glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04 and later); FreeBSD servers need 14.0 or newer.
+`dist/quickstack-linux-amd64.tar.gz` holds `bin/quickstack`, the libraries in `lib/`, and their licences in `share/licenses/`. On the server, unpack it and run its `install` script as root: it copies the release into `/opt/quickstack` owned by root, and creates the `quickstack` user with `/var/lib/quickstack` for uploads. Run the app as that user. The binary loads its libraries from `/opt/quickstack/lib`, so only root may write there. Linux servers need glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04 and later); FreeBSD servers need 14.0 or newer.
 
 `make docker` builds a Docker image with the same layout. Moving to a newer kit means changing the version and checksums in `scripts/vips-kit`.
 

@@ -1,0 +1,28 @@
+#!/bin/sh
+# Installs this release into /opt/quickstack, owned by root, and creates the
+# quickstack user with /var/lib/quickstack for uploads. Owners and modes are
+# set here, not taken from the tarball. Run it again to upgrade.
+#
+#   sudo ./install
+set -eu
+
+if [ "$(id -u)" != 0 ]; then
+	echo "install must run as root" >&2
+	exit 1
+fi
+src=$(cd "$(dirname "$0")" && pwd)
+
+rm -rf /opt/quickstack
+mkdir -p /opt/quickstack
+cp -R "$src/bin" "$src/lib" "$src/share" /opt/quickstack/
+chmod -R u=rwX,go=rX /opt/quickstack
+
+if ! id quickstack >/dev/null 2>&1; then
+	case $(uname -s) in
+	FreeBSD) pw useradd quickstack -d /var/lib/quickstack -s /usr/sbin/nologin ;;
+	*) useradd --system --home-dir /var/lib/quickstack --shell /usr/sbin/nologin quickstack ;;
+	esac
+fi
+mkdir -p /var/lib/quickstack/media
+chown quickstack:quickstack /var/lib/quickstack /var/lib/quickstack/media
+chmod 750 /var/lib/quickstack /var/lib/quickstack/media
