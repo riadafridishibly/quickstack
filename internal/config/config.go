@@ -32,6 +32,9 @@ type Config struct {
 	// DebugAddr serves net/http/pprof when set. It has no auth, so keep it
 	// off public interfaces.
 	DebugAddr string
+	// BlobURL is where uploaded files go: file:///dir or
+	// s3://key:secret@bucket/prefix?endpoint=host:port (see blob.Open).
+	BlobURL string
 }
 
 func Load() (Config, error) {
@@ -42,6 +45,7 @@ func Load() (Config, error) {
 		MailFrom:    env("QUICKSTACK_MAIL_FROM", "Quickstack <noreply@localhost>"),
 		MailOutbox:  os.Getenv("QUICKSTACK_MAIL_OUTBOX") == "1",
 		DebugAddr:   os.Getenv("QUICKSTACK_DEBUG_ADDR"),
+		BlobURL:     os.Getenv("QUICKSTACK_BLOB_URL"),
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("QUICKSTACK_DATABASE_URL is required")
@@ -55,6 +59,12 @@ func Load() (Config, error) {
 	if os.Getenv("QUICKSTACK_DEV") == "1" {
 		c.ViteURL = env("QUICKSTACK_VITE_URL", "http://localhost:8361")
 		c.MailOutbox = true
+	}
+	if c.BlobURL == "" {
+		c.BlobURL = "file:///var/lib/quickstack/media"
+		if c.ViteURL != "" {
+			c.BlobURL = "file://./tmp/media"
+		}
 	}
 	public := os.Getenv("QUICKSTACK_PUBLIC_URL")
 	if public == "" {

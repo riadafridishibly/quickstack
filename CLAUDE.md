@@ -9,6 +9,7 @@ Design notes and decisions live in the issue tracker, not in the repo. Keep code
 - `make setup`: install pnpm packages, Playwright's Chromium, and the pre-push hook (once).
 - `make db-setup`: create the roles and the `quickstack` database (once). `make db-up` starts Postgres in Docker instead.
 - `make dev`: Vite + Go with live reload. Open http://localhost:7360 (the templ proxy), not :8360. Mail goes to http://localhost:7360/dev/mail.
+- `make s3-up`: SeaweedFS in Docker, to try the S3 blob store. Its tests run when `QUICKSTACK_TEST_S3_URL` is set (see `.env.example`).
 - `make seed [args="--reset"]`: sample accounts (`owner@`, `manager@`, `member@`, `viewer@`, `admin@`, `support@seed.test`, password `seed-password`), two workspaces and 90 days of tasks. It refuses a database that isn't on this machine unless given `--allow-remote`.
 - `make gen`: regenerate Go from `.templ` and `.sql` files. Run it after editing either.
 - `make migration name=<name>`: new timestamped migration file.
@@ -16,6 +17,8 @@ Design notes and decisions live in the issue tracker, not in the repo. Keep code
 - `make e2e`: Playwright against the built app. Run it when you change anything a browser does (htmx attributes, islands, forms).
 - `make fmt`: format Go, templ, and TypeScript.
 - `go run ./cmd/quickstack create-user|reset-password|set-platform-role ...`: manage accounts from the command line. `set-platform-role you@example.com superadmin` opens `/admin`.
+
+Building needs libvips 8.16+ (`brew install vips`, `apt install libvips-dev`), which comes in through cgo. `make docker` builds the production image.
 
 There is no CI; run checks locally.
 
@@ -37,6 +40,8 @@ internal/insights/    SAMPLE: a workspace's overview with stat tiles and charts
 internal/public/      SAMPLE: landing page and public roadmaps, with their own layout and stylesheet
 internal/chart/       line and column charts drawn as SVG on the server, with a table of the values
 internal/mail/        Sender (SMTP, log, dev outbox), the send job, Enqueue
+internal/blob/        Store: files by key on local disk (file://) or in an S3-compatible bucket (s3://)
+internal/media/       image uploads: Check, Create, Delete, the libvips job, /media/{key}/{file}, /admin/media
 internal/jobs/        River client
 internal/web/         Handle/Render/htmx helpers, middleware, Document/Layout/ShellLayout, form components, embedded dist/
 internal/slug/        URL slugs
@@ -83,6 +88,7 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 - Record changes people should be able to trace with `RecordAudit` in the same transaction; `/admin/audit` lists them.
 - Send mail with `mail.Enqueue(ctx, jc, tx, msg)` inside the transaction, so it goes out only if the change commits. Links in mail start with `cfg.PublicURL`.
 - Map `pgx.ErrNoRows` to `web.ErrNotFound` (`web.NotFoundIfNoRows`).
+- Images: `media.Check(r)` before the transaction (a `*media.Rejected` error is a 422 with its message), then `media.Create` inside it, and `media.Discard` if it doesn't commit. Link to an asset by its key (`media.URL`), never its id. Only the JPEG, PNG, WebP, GIF and HEIF loaders of libvips may run; the original is never served.
 
 ## Handlers
 

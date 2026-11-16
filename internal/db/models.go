@@ -18,6 +18,23 @@ type Account struct {
 	UpdatedAt    time.Time
 }
 
+type Asset struct {
+	ID          int64
+	Key         string
+	Status      string
+	Error       string
+	ContentType string
+	Bytes       int64
+	Sha256      []byte
+	Width       int32
+	Height      int32
+	Widths      []int32
+	Alt         string
+	Credit      string
+	CreatedBy   *int64
+	CreatedAt   time.Time
+}
+
 type AuditLog struct {
 	ID          int64
 	At          time.Time

@@ -55,6 +55,7 @@ var sections = []section{
 	{web.NavItem{Label: "Accounts", Href: "/admin/accounts"}, auth.ViewAccounts},
 	{web.NavItem{Label: "Workspaces", Href: "/admin/workspaces"}, auth.ViewAccounts},
 	{web.NavItem{Label: "Audit log", Href: "/admin/audit"}, auth.ViewAccounts},
+	{web.NavItem{Label: "Media", Href: "/admin/media"}, auth.ManageBlog},
 }
 
 func navItems(role auth.PlatformRole) []web.NavItem {

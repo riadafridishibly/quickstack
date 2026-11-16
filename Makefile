@@ -13,14 +13,24 @@ E2E_DATABASE_URL             ?= postgres://quickstack_app@localhost:5432/quickst
 E2E_MIGRATE_URL              ?= postgres://quickstack_owner@localhost:5432/quickstack_e2e?sslmode=disable
 export QUICKSTACK_DATABASE_URL QUICKSTACK_MIGRATE_URL QUICKSTACK_TEST_DATABASE_URL
 
-.PHONY: help setup hooks db-setup db-reset db-up psql migration dev dev-vite dev-go seed gen fmt build build-linux check check-deps test e2e clean
+# libvips comes through cgo. On macOS, each package that links it repeats
+# its libraries, and the linker warns about every one.
+ifeq ($(shell uname -s),Darwin)
+export CGO_LDFLAGS += -Wl,-no_warn_duplicate_libraries
+endif
+
+.PHONY: help setup check-vips hooks db-setup db-reset db-up s3-up psql migration dev dev-vite dev-go seed gen fmt build docker check check-deps test e2e clean
 
 help: ## List targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-11s %s\n", $$1, $$2}'
 
-setup: hooks ## Install pnpm packages and Playwright's Chromium
+setup: check-vips hooks ## Install pnpm packages and Playwright's Chromium
 	pnpm install
 	pnpm exec playwright install chromium
+
+check-vips:
+	@pkg-config --exists 'vips >= 8.16' || { \
+		echo "libvips 8.16 or later is needed to build: brew install vips, or apt install libvips-dev"; exit 1; }
 
 hooks: ## Run make check before every git push
 	git config core.hooksPath .githooks
@@ -36,6 +46,9 @@ db-reset: ## Drop and recreate the quickstack database
 
 db-up: ## Start PostgreSQL 18 in Docker instead of a local server
 	docker compose up -d --wait db
+
+s3-up: ## Start SeaweedFS, an S3-compatible store, in Docker
+	docker compose --profile s3 up -d --wait s3
 
 psql: ## Open psql as the app role
 	psql "$(QUICKSTACK_DATABASE_URL)"
@@ -75,9 +88,8 @@ build: gen ## Build the frontend and bin/quickstack
 	pnpm run build
 	go build -o bin/quickstack ./cmd/quickstack
 
-build-linux: gen ## Static bin/linux-amd64/quickstack
-	pnpm run build
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o bin/linux-amd64/quickstack ./cmd/quickstack
+docker: ## Build the quickstack Docker image
+	docker build -t quickstack .
 
 test: ## Go tests (needs PostgreSQL, see QUICKSTACK_TEST_DATABASE_URL)
 	go test ./...

@@ -4,6 +4,7 @@ package apptest
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/riadafridishibly/quickstack/internal/app"
+	"github.com/riadafridishibly/quickstack/internal/blob"
 	"github.com/riadafridishibly/quickstack/internal/mail"
 	"github.com/riadafridishibly/quickstack/internal/testdb"
 )
@@ -24,19 +26,25 @@ const PublicURL = "http://quickstack.test"
 type Server struct {
 	t    testing.TB
 	Pool *pgxpool.Pool
+	// Blob is the store uploads go to, in a temporary directory.
+	Blob *blob.File
 	h    http.Handler
 }
 
 func New(t testing.TB) *Server {
 	t.Helper()
 	pool := testdb.New(t)
-	// The Vite URL makes the layout point at a dev server, so tests don't
-	// need a frontend build.
-	h, err := app.New(app.Config{ViteURL: "http://localhost:8361", PublicURL: PublicURL}, pool)
+	store, err := blob.OpenFile(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Server{t: t, Pool: pool, h: h}
+	// The Vite URL makes the layout point at a dev server, so tests don't
+	// need a frontend build.
+	h, err := app.New(app.Config{ViteURL: "http://localhost:8361", PublicURL: PublicURL, Blob: store}, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Server{t: t, Pool: pool, Blob: store, h: h}
 }
 
 // Req is a request to send: Form makes it a POST.
@@ -44,6 +52,9 @@ type Req struct {
 	Path   string
 	Cookie *http.Cookie
 	Form   url.Values
+	// Body makes it a POST with this body, such as a multipart form; set
+	// its Content-Type in Header.
+	Body io.Reader
 	// Target makes it an htmx request that swaps into that element id; "-"
 	// is an htmx request with no target.
 	Target string
@@ -52,11 +63,14 @@ type Req struct {
 
 func (s *Server) Do(r Req) *httptest.ResponseRecorder {
 	s.t.Helper()
-	method, body := http.MethodGet, ""
+	method, body := http.MethodGet, io.Reader(strings.NewReader(""))
 	if r.Form != nil {
-		method, body = http.MethodPost, r.Form.Encode()
+		method, body = http.MethodPost, strings.NewReader(r.Form.Encode())
 	}
-	req := httptest.NewRequest(method, r.Path, strings.NewReader(body))
+	if r.Body != nil {
+		method, body = http.MethodPost, r.Body
+	}
+	req := httptest.NewRequest(method, r.Path, body)
 	if r.Form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

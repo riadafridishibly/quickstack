@@ -5,6 +5,7 @@ A starting point for Go web apps with several dashboards: one binary, PostgreSQL
 - **Go** with `net/http`, **templ** for HTML, **sqlc** for queries, **goose** migrations, **River** jobs
 - **htmx 4** for server round-trips, **Preact** islands for client state, **Tailwind 4** with **daisyUI 5**, built by **Vite** and embedded
 - **PostgreSQL 18** with row-level security per workspace
+- **libvips** (8.16+, through cgo) for image uploads, stored on disk or in any S3-compatible bucket
 
 It comes with:
 
@@ -13,10 +14,12 @@ It comes with:
 | Sign in | `/login`, `/signup`, `/forgot-password` | argon2id passwords, sessions in Postgres, rate limits, reset by email |
 | Workspace dashboard | `/w/{ws}` | tenant middleware, workspace roles, overview charts, projects with live search, a task board (htmx + a drag-and-drop island), members and invitations |
 | Account dashboard | `/account` | profile, password, sessions on other devices |
-| Platform admin | `/admin` | platform roles, accounts, workspaces, audit log |
+| Platform admin | `/admin` | platform roles, accounts, workspaces, audit log, media uploads |
 | Public site | `/`, `/p/{ws}` | its own layout and stylesheet, cached pages |
 
 ## Run it
+
+It needs Go, Node, PostgreSQL 18 (or Docker) and libvips: `brew install vips`, or `apt install libvips-dev`.
 
 ```sh
 make setup        # pnpm packages, Playwright's Chromium, pre-push hook
@@ -27,7 +30,7 @@ make dev          # open http://localhost:7360
 
 Sign in as `owner@seed.test`, or `admin@seed.test` for the platform admin. Mail goes to http://localhost:7360/dev/mail in development.
 
-`make check` runs everything that must pass; `make e2e` runs the browser tests. `make build` puts the app in `bin/quickstack`, and `make build-linux` makes a static Linux binary.
+`make check` runs everything that must pass; `make e2e` runs the browser tests. `make build` puts the app in `bin/quickstack`, and `make docker` builds a Docker image from the `Dockerfile`.
 
 ## Start a new project
 

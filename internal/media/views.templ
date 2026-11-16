@@ -1,0 +1,224 @@
+package media
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/platform"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+const accept = "image/jpeg,image/png,image/webp,image/gif,image/heic,.heic"
+
+func variant(key string, w int32) string {
+	return FileURL(key, strconv.Itoa(int(w))+".webp")
+}
+
+func srcset(a db.Asset) string {
+	parts := make([]string, len(a.Widths))
+	for i, w := range a.Widths {
+		parts[i] = variant(a.Key, w) + " " + strconv.Itoa(int(w)) + "w"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func size(bytes int64) string {
+	switch {
+	case bytes >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1<<20))
+	case bytes >= 1<<10:
+		return fmt.Sprintf("%d KB", bytes/(1<<10))
+	}
+	return fmt.Sprintf("%d bytes", bytes)
+}
+
+func dimensions(w, h int32) string {
+	return strconv.Itoa(int(w)) + " × " + strconv.Itoa(int(h))
+}
+
+templ listPage(v listView) {
+	@platform.Layout("Media") {
+		@web.PageHeader("Media")
+		@web.Flash(v.Message)
+		@uploadForm(v.UploadError)
+		@assetList(v)
+	}
+}
+
+templ uploadForm(errMsg string) {
+	<form
+		id={ uploadTarget }
+		method="post"
+		action={ templ.SafeURL(adminPath) }
+		enctype="multipart/form-data"
+		hx-post={ adminPath }
+		hx-swap="outerHTML"
+		class={ web.PaddedCardClass, "mb-6 flex flex-wrap items-end gap-3" }
+	>
+		<div class="min-w-0 flex-1">
+			@web.Field("Upload an image", "file", errMsg) {
+				<input type="file" { web.InputAttrs("file", errMsg)... } accept={ accept } required class="file-input w-full aria-[invalid=true]:file-input-error"/>
+			}
+			<p class="mt-1.5 text-sm opacity-70">JPEG, PNG, WebP, GIF or HEIC, up to 20 MB and 50 megapixels.</p>
+		</div>
+		<button type="submit" class={ web.ButtonClass, "mb-7" }>Upload</button>
+	</form>
+}
+
+templ assetList(v listView) {
+	<div id={ listTarget } class="transition-opacity [&.htmx-request]:opacity-60">
+		if len(v.Rows) == 0 {
+			@web.Empty("No images yet", "Images you upload here can go in blog posts.")
+		} else {
+			@web.PageCount(v.Page, "images")
+			<div class={ web.CardClass, "overflow-x-auto" }>
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">Image</th>
+							<th scope="col" class="max-sm:hidden">Size</th>
+							<th scope="col" class="max-sm:hidden">Uploaded</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, a := range v.Rows {
+							<tr>
+								<td>
+									<a href={ templ.SafeURL(assetURL(a.Key)) } class="flex items-center gap-3">
+										if a.Status == Ready && len(a.Widths) > 0 {
+											<img src={ variant(a.Key, a.Widths[0]) } alt="" loading="lazy" class="size-14 shrink-0 rounded object-cover bg-base-200"/>
+										} else {
+											<span class="size-14 shrink-0 rounded bg-base-200" aria-hidden="true"></span>
+										}
+										<span class="min-w-0">
+											<span class={ web.LinkClass, "block truncate" }>
+												if a.Alt != "" {
+													{ a.Alt }
+												} else {
+													{ a.Key }
+												}
+											</span>
+											@statusBadge(a.Status)
+										</span>
+									</a>
+								</td>
+								<td class="max-sm:hidden text-sm tabular-nums opacity-70">{ dimensions(a.Width, a.Height) }</td>
+								<td class="max-sm:hidden text-sm opacity-70">
+									{ a.CreatedAt.Format("Jan 2, 2006") }
+									if a.CreatedByName != "" {
+										<span class="block">{ a.CreatedByName }</span>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+			@web.Pager(v.Page, listTarget)
+		}
+	</div>
+}
+
+templ statusBadge(status string) {
+	switch status {
+		case Processing:
+			<span class="badge badge-soft badge-sm">Processing</span>
+		case Failed:
+			<span class="badge badge-soft badge-error badge-sm">Failed</span>
+	}
+}
+
+templ assetPage(v assetView) {
+	{{ a := v.Asset }}
+	@platform.Layout("Image " + a.Key) {
+		<nav aria-label="Breadcrumb" class="mb-1 text-sm opacity-70">
+			<a href={ templ.SafeURL(adminPath) } class="link-hover">Media</a>
+		</nav>
+		@web.PageHeader("Image " + a.Key)
+		@web.Flash(v.Message)
+		<div class="grid gap-6 lg:grid-cols-2">
+			<div class="space-y-6">
+				@preview(a)
+				<section class={ web.PaddedCardClass }>
+					<dl class="grid gap-3 sm:grid-cols-2">
+						<div>
+							<dt class="text-sm opacity-60">Size</dt>
+							<dd class="tabular-nums">{ dimensions(a.Width, a.Height) }</dd>
+						</div>
+						<div>
+							<dt class="text-sm opacity-60">File</dt>
+							<dd>{ strings.TrimPrefix(a.ContentType, "image/") }, { size(a.Bytes) }</dd>
+						</div>
+						<div>
+							<dt class="text-sm opacity-60">Uploaded</dt>
+							<dd>{ a.CreatedAt.Format("Jan 2, 2006") }</dd>
+						</div>
+					</dl>
+				</section>
+			</div>
+			<div class="space-y-6">
+				@textFormEl(a, v.Form)
+				<details class={ web.PaddedCardClass }>
+					<summary class="cursor-pointer font-medium text-error">Delete image</summary>
+					<p class="mt-3 text-sm opacity-80">Posts that show this image will show a broken image instead. This can’t be undone.</p>
+					<form method="post" action={ templ.SafeURL(assetURL(a.Key) + "/delete") } class="mt-4">
+						<button type="submit" class="btn btn-error">Delete image</button>
+					</form>
+				</details>
+			</div>
+		</div>
+	}
+}
+
+// preview is the image, or its status while it isn't ready. While the job
+// runs, htmx asks for it again every two seconds.
+templ preview(a db.Asset) {
+	<section
+		id={ previewTarget }
+		if a.Status == Processing {
+			hx-get={ assetURL(a.Key) }
+			hx-trigger="every 2s"
+			hx-swap="outerHTML"
+		}
+		class={ web.CardClass, "overflow-hidden" }
+	>
+		switch a.Status {
+			case Ready:
+				<img
+					src={ variant(a.Key, a.Widths[len(a.Widths)-1]) }
+					srcset={ srcset(a) }
+					sizes="(min-width: 1024px) 40vw, 100vw"
+					width={ strconv.Itoa(int(a.Width)) }
+					height={ strconv.Itoa(int(a.Height)) }
+					alt={ a.Alt }
+					class="h-auto w-full bg-base-200"
+				/>
+			case Failed:
+				<p role="alert" class="alert alert-error alert-soft m-4">{ a.Error }</p>
+			default:
+				<p role="status" class="flex items-center gap-3 p-6">
+					<span class="loading loading-spinner loading-sm" aria-hidden="true"></span>
+					Making the resized copies…
+				</p>
+		}
+	</section>
+}
+
+templ textFormEl(a db.Asset, f textForm) {
+	{{ action := assetURL(a.Key) }}
+	<form id={ textTarget } method="post" action={ templ.SafeURL(action) } hx-post={ action } hx-swap="outerHTML" novalidate class={ web.PaddedCardClass, "space-y-5" }>
+		@web.Field("Alt text", "alt", f.Errors["alt"]) {
+			<textarea { web.InputAttrs("alt", f.Errors["alt"])... } rows="3" maxlength="500" class={ web.TextareaClass }>{ f.Alt }</textarea>
+		}
+		<p class="-mt-3 text-sm opacity-70">What the image shows, for people who can’t see it. Posts use it unless they give their own.</p>
+		@web.Field("Credit", "credit", f.Errors["credit"]) {
+			<input type="text" { web.InputAttrs("credit", f.Errors["credit"])... } value={ f.Credit } maxlength="200" class={ web.InputClass }/>
+		}
+		@web.Field("Markdown", "markdown", "") {
+			<input type="text" id="markdown" value={ markdown(a) } readonly class={ web.InputClass, "font-mono text-sm" }/>
+		}
+		<button type="submit" class={ web.ButtonClass }>Save</button>
+	</form>
+}

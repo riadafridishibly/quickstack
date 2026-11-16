@@ -4,6 +4,7 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 	"net/netip"
 
@@ -12,9 +13,11 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/account"
 	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/blob"
 	"github.com/riadafridishibly/quickstack/internal/insights"
 	"github.com/riadafridishibly/quickstack/internal/jobs"
 	"github.com/riadafridishibly/quickstack/internal/mail"
+	"github.com/riadafridishibly/quickstack/internal/media"
 	"github.com/riadafridishibly/quickstack/internal/platform"
 	"github.com/riadafridishibly/quickstack/internal/projects"
 	"github.com/riadafridishibly/quickstack/internal/public"
@@ -33,9 +36,14 @@ type Config struct {
 	Jobs *jobs.Client
 	// Outbox, when set, is served at /dev/mail.
 	Outbox *mail.Outbox
+	// Blob holds uploaded files.
+	Blob blob.Store
 }
 
 func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
+	if cfg.Blob == nil {
+		return nil, errors.New("app: no blob store")
+	}
 	assets, err := web.NewAssets(cfg.ViteURL)
 	if err != nil {
 		return nil, err
@@ -59,6 +67,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 	// The platform admin, for staff only.
 	adm := http.NewServeMux()
 	platform.Routes(adm, pool)
+	media.AdminRoutes(adm, pool, cfg.Blob, cfg.Jobs)
 	adm.Handle("/", notFound)
 
 	// Everything that needs a signed-in user.
@@ -82,6 +91,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/assets/", web.StaticHandler())
+	media.Routes(mux, cfg.Blob)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
@@ -128,9 +138,10 @@ func isMount(p string) bool {
 }
 
 // Workers returns the background job workers and their schedules.
-func Workers(pool *pgxpool.Pool, sender mail.Sender) *jobs.Setup {
+func Workers(pool *pgxpool.Pool, sender mail.Sender, store blob.Store) *jobs.Setup {
 	w := river.NewWorkers()
 	mail.AddWorker(w, sender)
+	media.AddWorkers(w, pool, store)
 	periodic := auth.AddWorkers(w, pool)
 	return &jobs.Setup{Workers: w, Periodic: periodic}
 }

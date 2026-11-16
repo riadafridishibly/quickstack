@@ -17,6 +17,7 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/app"
 	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/blob"
 	"github.com/riadafridishibly/quickstack/internal/config"
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/jobs"
@@ -83,12 +84,16 @@ func run() error {
 		sender = outbox
 		slog.Info("mail goes to the outbox", "url", cfg.PublicURL+"/dev/mail")
 	}
-	jc, err := jobs.New(pool, app.Workers(pool, sender))
+	store, err := blob.Open(cfg.BlobURL)
+	if err != nil {
+		return fmt.Errorf("QUICKSTACK_BLOB_URL: %w", err)
+	}
+	jc, err := jobs.New(pool, app.Workers(pool, sender, store))
 	if err != nil {
 		return err
 	}
 	h, err := app.New(app.Config{
-		ViteURL: cfg.ViteURL, TrustedProxies: cfg.TrustedProxies, PublicURL: cfg.PublicURL, Jobs: jc, Outbox: outbox,
+		ViteURL: cfg.ViteURL, TrustedProxies: cfg.TrustedProxies, PublicURL: cfg.PublicURL, Jobs: jc, Outbox: outbox, Blob: store,
 	}, pool)
 	if err != nil {
 		return err

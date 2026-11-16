@@ -26,6 +26,7 @@ export default defineConfig({
       QUICKSTACK_ADDR: `localhost:${port}`,
       // Mail goes to /dev/mail, where the specs read invitation and reset links.
       QUICKSTACK_MAIL_OUTBOX: "1",
+      QUICKSTACK_BLOB_URL: "file://./tmp/e2e-media",
     },
     url: `http://localhost:${port}/healthz`,
     reuseExistingServer: false,
