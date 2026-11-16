@@ -95,6 +95,13 @@ zig_target.linux-amd64   := x86_64-linux-gnu.2.28
 zig_target.linux-arm64   := aarch64-linux-gnu.2.28
 zig_target.freebsd-amd64 := x86_64-freebsd.14.0
 DIST := dist/quickstack-$(TARGET)
+# Files in the tarball belong to root, not to the build machine's uid, which
+# may be another account on the server.
+ifneq ($(findstring bsdtar,$(shell tar --version 2>/dev/null)),)
+TAR_ROOT := --uid 0 --gid 0 --uname root --gname root
+else
+TAR_ROOT := --owner=root:0 --group=root:0
+endif
 
 dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or freebsd-amd64
 	@test -n "$(zig_target.$(TARGET))" || { echo "TARGET must be linux-amd64, linux-arm64 or freebsd-amd64"; exit 1; }
@@ -110,7 +117,7 @@ dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or f
 		go build -a -trimpath -ldflags='-s -w' -o $(DIST)/bin/quickstack ./cmd/quickstack
 	cp -a dist/vips/$(TARGET)/lib/*.so.* $(DIST)/lib/
 	cp -R dist/vips/$(TARGET)/share/licenses $(DIST)/share/
-	COPYFILE_DISABLE=1 tar --no-xattrs -czf $(DIST).tar.gz -C dist quickstack-$(TARGET)
+	COPYFILE_DISABLE=1 tar --no-xattrs $(TAR_ROOT) -czf $(DIST).tar.gz -C dist quickstack-$(TARGET)
 	@echo $(DIST).tar.gz
 
 docker: ## Build the quickstack Docker image
