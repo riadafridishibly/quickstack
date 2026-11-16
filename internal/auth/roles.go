@@ -106,9 +106,11 @@ type PlatformRole string
 const (
 	Superadmin PlatformRole = "superadmin"
 	Support    PlatformRole = "support"
+	// Editor writes the site's blog and sees no accounts or workspaces.
+	Editor PlatformRole = "editor"
 )
 
-var PlatformRoles = []PlatformRole{Superadmin, Support}
+var PlatformRoles = []PlatformRole{Superadmin, Support, Editor}
 
 func (r PlatformRole) Valid() bool { return slices.Contains(PlatformRoles, r) }
 
@@ -118,6 +120,8 @@ func (r PlatformRole) Label() string {
 		return "Superadmin"
 	case Support:
 		return "Support"
+	case Editor:
+		return "Editor"
 	}
 	return string(r)
 }
@@ -125,16 +129,24 @@ func (r PlatformRole) Label() string {
 type PlatformAction int
 
 const (
-	ViewPlatform PlatformAction = iota
+	// OpenAdmin lets a role into /admin. Each section there checks its own
+	// action as well.
+	OpenAdmin PlatformAction = iota
+	// ViewAccounts covers the overview, accounts, workspaces and the audit
+	// log.
+	ViewAccounts
 	// SignOutAccounts ends all of an account's sessions, for support.
 	SignOutAccounts
 	ManagePlatformRoles
+	ManageBlog
 )
 
 var platformAllowed = map[PlatformAction][]PlatformRole{
-	ViewPlatform:        {Superadmin, Support},
+	OpenAdmin:           {Superadmin, Support, Editor},
+	ViewAccounts:        {Superadmin, Support},
 	SignOutAccounts:     {Superadmin, Support},
 	ManagePlatformRoles: {Superadmin},
+	ManageBlog:          {Superadmin, Editor},
 }
 
 func CanPlatform(role PlatformRole, action PlatformAction) bool {

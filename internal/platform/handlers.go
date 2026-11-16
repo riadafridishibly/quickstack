@@ -30,17 +30,41 @@ type handler struct {
 	q    *db.Queries
 }
 
-// Routes adds the admin pages to mux. Wrap it in auth.RequirePlatform(auth.ViewPlatform).
+// Routes adds the admin pages to mux. Wrap it in auth.RequirePlatform(auth.OpenAdmin).
 func Routes(mux *http.ServeMux, pool *pgxpool.Pool) {
 	h := handler{pool: pool, q: db.New(pool)}
+	view := auth.RequirePlatform(auth.ViewAccounts)
 	mux.Handle("GET "+homePath, web.Handle(h.home))
-	mux.Handle("GET /admin/accounts", web.Handle(h.accounts))
-	mux.Handle("GET /admin/accounts/{id}", web.Handle(h.account))
+	mux.Handle("GET /admin/accounts", view(web.Handle(h.accounts)))
+	mux.Handle("GET /admin/accounts/{id}", view(web.Handle(h.account)))
 	mux.Handle("POST /admin/accounts/{id}/role", auth.RequirePlatform(auth.ManagePlatformRoles)(web.Handle(h.setRole)))
 	mux.Handle("POST /admin/accounts/{id}/sign-out", auth.RequirePlatform(auth.SignOutAccounts)(web.Handle(h.signOut)))
-	mux.Handle("GET /admin/workspaces", web.Handle(h.workspaces))
-	mux.Handle("GET /admin/workspaces/{id}", web.Handle(h.workspace))
-	mux.Handle("GET /admin/audit", web.Handle(h.audit))
+	mux.Handle("GET /admin/workspaces", view(web.Handle(h.workspaces)))
+	mux.Handle("GET /admin/workspaces/{id}", view(web.Handle(h.workspace)))
+	mux.Handle("GET /admin/audit", view(web.Handle(h.audit)))
+}
+
+// section is an entry in the admin sidebar and the action it needs.
+type section struct {
+	item   web.NavItem
+	action auth.PlatformAction
+}
+
+var sections = []section{
+	{web.NavItem{Label: "Overview", Href: homePath, Exact: true}, auth.ViewAccounts},
+	{web.NavItem{Label: "Accounts", Href: "/admin/accounts"}, auth.ViewAccounts},
+	{web.NavItem{Label: "Workspaces", Href: "/admin/workspaces"}, auth.ViewAccounts},
+	{web.NavItem{Label: "Audit log", Href: "/admin/audit"}, auth.ViewAccounts},
+}
+
+func navItems(role auth.PlatformRole) []web.NavItem {
+	var items []web.NavItem
+	for _, s := range sections {
+		if auth.CanPlatform(role, s.action) {
+			items = append(items, s.item)
+		}
+	}
+	return items
 }
 
 type homeView struct {
@@ -48,7 +72,18 @@ type homeView struct {
 	Signups chart.Data
 }
 
+// home is the overview. Staff who may not see it go to the first section
+// they may open.
 func (h handler) home(w http.ResponseWriter, r *http.Request) error {
+	role := auth.From(r.Context()).PlatformRole
+	if !auth.CanPlatform(role, auth.ViewAccounts) {
+		items := navItems(role)
+		if len(items) == 0 {
+			return web.ErrForbidden
+		}
+		web.Redirect(w, r, items[0].Href)
+		return nil
+	}
 	var v homeView
 	var err error
 	if v.Counts, err = h.q.PlatformCounts(r.Context()); err != nil {

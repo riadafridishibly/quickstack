@@ -52,7 +52,7 @@ e2e/                  Playwright specs; import test/expect from ./fixtures
 ## Two kinds of role
 
 - **Workspace roles** (`owner`, `admin`, `member`, `viewer`) live in `memberships`. `workspaces.Middleware` puts the user's role in the request context; `auth.Require(action)` enforces it on routes and `auth.CanIn(ctx, action)` decides what a template shows. Add actions in `internal/auth/roles.go`.
-- **Platform roles** (`superadmin`, `support`) live on `accounts.platform_role` and open `/admin`: `auth.RequirePlatform(action)`, `auth.CanPlatform(role, action)`. They give no access to any workspace; staff see that a workspace exists and who is in it, not its data.
+- **Platform roles** (`superadmin`, `support`, `editor`) live on `accounts.platform_role` and open `/admin`: `auth.RequirePlatform(action)`, `auth.CanPlatform(role, action)`. `OpenAdmin` lets a role in; each section also checks its own action (`ViewAccounts` for accounts, workspaces and the audit log, `ManageBlog` for the blog), and the sidebar lists only those the role may open (`sections` in `internal/platform/handlers.go`). An editor sees no accounts or workspaces. Platform roles give no access to any workspace; staff see that a workspace exists and who is in it, not its data.
 - Ownership is the query: a row of another workspace isn't forbidden, it's not found.
 
 ## Adding a feature

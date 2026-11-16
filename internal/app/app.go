@@ -68,7 +68,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 	inWorkspace := workspaces.Middleware(pool)(ws)
 	signedIn.Handle("/w/{ws}", inWorkspace)
 	signedIn.Handle("/w/{ws}/", inWorkspace)
-	staff := auth.RequirePlatform(auth.ViewPlatform)(adm)
+	staff := auth.RequirePlatform(auth.OpenAdmin)(adm)
 	signedIn.Handle("/admin", staff)
 	signedIn.Handle("/admin/", staff)
 	signedIn.Handle("/", notFound)
