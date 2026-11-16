@@ -21,20 +21,15 @@ templ Layout(title string) {
 
 func shell(ctx context.Context) web.Shell {
 	s := web.Shell{
-		Name:     "Quickstack",
-		NameHref: homePath,
-		Kind:     "Platform admin",
-		Sections: []web.NavSection{{Items: []web.NavItem{
-			{Label: "Overview", Href: homePath, Exact: true},
-			{Label: "Accounts", Href: "/admin/accounts"},
-			{Label: "Workspaces", Href: "/admin/workspaces"},
-			{Label: "Audit log", Href: "/admin/audit"},
-		}}},
+		Name:       "Quickstack",
+		NameHref:   homePath,
+		Kind:       "Platform admin",
 		Links:      []web.NavItem{{Label: "Your workspaces", Href: auth.HomePath, Exact: true}, {Label: "Your account", Href: "/account"}},
 		LogoutPath: auth.LogoutPath,
 	}
 	if u := auth.From(ctx); u != nil {
 		s.UserName, s.UserEmail = u.Name, u.Email
+		s.Sections = []web.NavSection{{Items: navItems(u.PlatformRole)}}
 	}
 	return s
 }

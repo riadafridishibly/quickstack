@@ -22,9 +22,19 @@ func TestPlatformRoles(t *testing.T) {
 	adminID, admin := authtest.SignIn(t, s.Pool, "ada@example.com")
 	authtest.SetPlatformRole(t, s.Pool, adminID, auth.Superadmin)
 
+	editorID, editor := authtest.SignIn(t, s.Pool, "eve@example.com")
+	authtest.SetPlatformRole(t, s.Pool, editorID, auth.Editor)
+
 	apptest.Status(t, s.Get("/admin", nobody), http.StatusForbidden)
 	for _, p := range []string{"/admin", "/admin/accounts", "/admin/workspaces", "/admin/audit"} {
 		apptest.Status(t, s.Get(p, support), http.StatusOK)
+	}
+	for _, p := range []string{"/admin", "/admin/accounts", fmt.Sprintf("/admin/accounts/%d", supportID), "/admin/workspaces", "/admin/audit"} {
+		apptest.Status(t, s.Get(p, editor), http.StatusForbidden)
+	}
+	apptest.Status(t, s.Post(fmt.Sprintf("/admin/accounts/%d/sign-out", supportID), editor, url.Values{}), http.StatusForbidden)
+	if b := s.Get("/account", editor).Body.String(); !strings.Contains(b, `href="/admin"`) {
+		t.Error("no admin link for an editor")
 	}
 	w := s.Do(apptest.Req{Path: "/admin/accounts?q=ana", Cookie: support, Target: "admin-list"})
 	if b := w.Body.String(); strings.Contains(b, "<html") || !strings.Contains(b, "ana@example.com") || strings.Contains(b, "sam@example.com") {

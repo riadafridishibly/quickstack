@@ -28,7 +28,7 @@ const usage = `usage:
   quickstack migrate                            apply migrations and exit
   quickstack create-user <email> <name>         create an account and print its password
   quickstack reset-password <email>             set a new random password and print it
-  quickstack set-platform-role <email> <role>   role: superadmin, support or none`
+  quickstack set-platform-role <email> <role>   role: superadmin, support, editor or none`
 
 func main() {
 	var err error
@@ -154,7 +154,7 @@ func setPlatformRole(ctx context.Context, pool *pgxpool.Pool, email, role string
 	var r *string
 	if role != "none" {
 		if !auth.PlatformRole(role).Valid() {
-			return fmt.Errorf("role %q: use superadmin, support or none", role)
+			return fmt.Errorf("role %q: use superadmin, support, editor or none", role)
 		}
 		r = &role
 	}

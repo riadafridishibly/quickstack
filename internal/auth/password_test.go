@@ -30,7 +30,8 @@ func TestRoles(t *testing.T) {
 	if Can(Viewer, EditTasks) || !Can(Member, EditTasks) || Can(Member, ManageMembers) || !Can(Admin, ManageMembers) {
 		t.Error("workspace roles allow the wrong actions")
 	}
-	if CanPlatform("", ViewPlatform) || !CanPlatform(Support, ViewPlatform) || CanPlatform(Support, ManagePlatformRoles) {
+	if CanPlatform("", OpenAdmin) || !CanPlatform(Support, ViewAccounts) || CanPlatform(Support, ManagePlatformRoles) ||
+		CanPlatform(Support, ManageBlog) || !CanPlatform(Editor, OpenAdmin) || CanPlatform(Editor, ViewAccounts) {
 		t.Error("platform roles allow the wrong actions")
 	}
 }
