@@ -7,3 +7,4 @@ test-results
 playwright-report
 e2e/.auth
 internal/web/dist
+dist

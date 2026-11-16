@@ -19,7 +19,7 @@ ifeq ($(shell uname -s),Darwin)
 export CGO_LDFLAGS += -Wl,-no_warn_duplicate_libraries
 endif
 
-.PHONY: help setup check-vips hooks db-setup db-reset db-up s3-up psql migration dev dev-vite dev-go seed gen fmt build docker check check-deps test e2e clean
+.PHONY: help setup check-vips hooks db-setup db-reset db-up s3-up psql migration dev dev-vite dev-go seed gen fmt build dist docker check check-deps test e2e clean
 
 help: ## List targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-11s %s\n", $$1, $$2}'
@@ -88,6 +88,32 @@ build: gen ## Build the frontend and bin/quickstack
 	pnpm run build
 	go build -o bin/quickstack ./cmd/quickstack
 
+# dist cross-compiles with zig against a libvips kit from quickstack-vips
+# (scripts/vips-kit), so the release carries its own libvips.
+TARGET ?= linux-amd64
+zig_target.linux-amd64   := x86_64-linux-gnu.2.28
+zig_target.linux-arm64   := aarch64-linux-gnu.2.28
+zig_target.freebsd-amd64 := x86_64-freebsd.14.0
+DIST := dist/quickstack-$(TARGET)
+
+dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or freebsd-amd64
+	@test -n "$(zig_target.$(TARGET))" || { echo "TARGET must be linux-amd64, linux-arm64 or freebsd-amd64"; exit 1; }
+	@command -v zig >/dev/null || { echo "zig is needed: brew install zig, or see ziglang.org"; exit 1; }
+	pnpm run build
+	scripts/vips-kit $(TARGET) dist/vips/$(TARGET)
+	rm -rf $(DIST) $(DIST).tar.gz
+	mkdir -p $(DIST)/bin $(DIST)/lib $(DIST)/share
+	GOOS=$(word 1,$(subst -, ,$(TARGET))) GOARCH=$(word 2,$(subst -, ,$(TARGET))) CGO_ENABLED=1 \
+		CC="zig cc -target $(zig_target.$(TARGET))" \
+		PKG_CONFIG_LIBDIR=$(CURDIR)/dist/vips/$(TARGET)/lib/pkgconfig \
+		CGO_LDFLAGS='-Wl,-rpath,$$ORIGIN/../lib' \
+		go build -a -trimpath -ldflags='-s -w' -o $(DIST)/bin/quickstack ./cmd/quickstack
+	cp -a dist/vips/$(TARGET)/lib/*.so.* $(DIST)/lib/
+	cp -R dist/vips/$(TARGET)/share/licenses $(DIST)/share/
+	cp scripts/install $(DIST)/install
+	COPYFILE_DISABLE=1 tar --no-xattrs -czf $(DIST).tar.gz -C dist quickstack-$(TARGET)
+	@echo $(DIST).tar.gz
+
 docker: ## Build the quickstack Docker image
 	docker build -t quickstack .
 
@@ -114,5 +140,5 @@ e2e: build ## Playwright tests against the built app
 		pnpm exec playwright test
 
 clean: ## Remove build output
-	rm -rf bin test-results playwright-report
+	rm -rf bin dist test-results playwright-report
 	find internal/web/dist -mindepth 1 ! -name .gitkeep -delete

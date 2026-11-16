@@ -19,7 +19,7 @@ It comes with:
 
 ## Run it
 
-It needs Go, Node, PostgreSQL 18 (or Docker) and libvips: `brew install vips`, or `apt install libvips-dev`.
+It needs Go, Node, PostgreSQL 18 (or Docker) and libvips for development: `brew install vips`, or `apt install libvips-dev`.
 
 ```sh
 make setup        # pnpm packages, Playwright's Chromium, pre-push hook
@@ -30,7 +30,19 @@ make dev          # open http://localhost:7360
 
 Sign in as `owner@seed.test`, or `admin@seed.test` for the platform admin. Mail goes to http://localhost:7360/dev/mail in development.
 
-`make check` runs everything that must pass; `make e2e` runs the browser tests. `make build` puts the app in `bin/quickstack`, and `make docker` builds a Docker image from the `Dockerfile`.
+`make check` runs everything that must pass; `make e2e` runs the browser tests. `make build` puts the app in `bin/quickstack` for this machine.
+
+## Deploy
+
+Releases carry their own libvips, so servers don't need it installed. `make dist` cross-compiles with [zig](https://ziglang.org) (`brew install zig`) against a prebuilt libvips kit from [quickstack-vips](https://github.com/riadafridishibly/quickstack-vips), from any machine:
+
+```sh
+make dist TARGET=linux-amd64     # or linux-arm64, freebsd-amd64
+```
+
+`dist/quickstack-linux-amd64.tar.gz` holds `bin/quickstack`, the libraries in `lib/`, and their licences in `share/licenses/`. On the server, unpack it and run its `install` script as root: it copies the release into `/opt/quickstack` owned by root, and creates the `quickstack` user with `/var/lib/quickstack` for uploads. Run the app as that user. The binary loads its libraries from `/opt/quickstack/lib`, so only root may write there. Linux servers need glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04 and later); FreeBSD servers need 14.0 or newer.
+
+`make docker` builds a Docker image with the same layout. Moving to a newer kit means changing the version and checksums in `scripts/vips-kit`.
 
 ## Start a new project
 
