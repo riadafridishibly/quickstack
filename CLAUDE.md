@@ -18,7 +18,7 @@ Design notes and decisions live in the issue tracker, not in the repo. Keep code
 - `make fmt`: format Go, templ, and TypeScript.
 - `go run ./cmd/quickstack create-user|reset-password|set-platform-role ...`: manage accounts from the command line. `set-platform-role you@example.com superadmin` opens `/admin`.
 
-Building needs libvips 8.16+ (`brew install vips`, `apt install libvips-dev`), which comes in through cgo. `make docker` builds the production image.
+Building needs libvips 8.16+ (`brew install vips`, `apt install libvips-dev`), which comes in through cgo. Releases don't use it: `make dist TARGET=linux-amd64|linux-arm64|freebsd-amd64` cross-compiles with zig against a libvips kit from quickstack-vips (`scripts/vips-kit` pins the version) and packs the libraries next to the binary; `make docker` builds an image the same way.
 
 There is no CI; run checks locally.
 

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Downloads the libvips kit for a target from quickstack-vips into a
+# directory and checks it against the checksums below. To move to another
+# release, change version and paste that release's SHA256SUMS.
+#
+#   scripts/vips-kit linux-amd64 dist/vips/linux-amd64
+set -eu
+
+version=8.18.7-r1
+sums='
+119e7449a0e0089f20441684aeb9dc99270440d77cec6183cc18414896c1e656  quickstack-vips-8.18.7-r1-freebsd-amd64.tar.gz
+3e442f2fec4782fa07ac8e7d6601834bb279c170e33a63d34ca0629c7cac9245  quickstack-vips-8.18.7-r1-linux-amd64.tar.gz
+c065e5a01e8cffc1a83f2abb982d870a0c9eac5184b09389aab42c480b5876a3  quickstack-vips-8.18.7-r1-linux-arm64.tar.gz
+'
+
+if [ $# -ne 2 ]; then
+	echo "usage: scripts/vips-kit <linux-amd64|linux-arm64|freebsd-amd64> <dir>" >&2
+	exit 2
+fi
+target=$1
+dir=$2
+file=quickstack-vips-$version-$target.tar.gz
+line=$(printf '%s' "$sums" | grep "  $file\$") || {
+	echo "no kit for $target in quickstack-vips $version" >&2
+	exit 2
+}
+
+[ "$(cat "$dir/.kit" 2>/dev/null)" = "$version-$target" ] && exit 0
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+curl -fsSL -o "$tmp/$file" "https://github.com/riadafridishibly/quickstack-vips/releases/download/v$version/$file"
+if command -v sha256sum >/dev/null; then
+	(cd "$tmp" && echo "$line" | sha256sum -c --quiet -)
+else
+	(cd "$tmp" && echo "$line" | shasum -a 256 -c --quiet -)
+fi
+rm -rf "$dir"
+mkdir -p "$dir"
+tar -xzf "$tmp/$file" -C "$dir"
+echo "$version-$target" >"$dir/.kit"
