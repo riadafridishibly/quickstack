@@ -1,0 +1,140 @@
+package blog
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/markdown"
+	"github.com/riadafridishibly/quickstack/internal/media"
+	"github.com/riadafridishibly/quickstack/internal/public"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+func postDate(t time.Time) string { return t.UTC().Format("January 2, 2006") }
+
+func previewNote(p db.Post) string {
+	if live(p, time.Now()) {
+		return "Preview. This post is live."
+	}
+	return "Preview. Only staff can see this page; the post isn’t live."
+}
+
+templ indexPage(v indexView, m web.Meta) {
+	@public.Layout(v.Title, m) {
+		<section class="mx-auto max-w-3xl px-4 py-12">
+			if v.Tag != "" {
+				<p class="text-sm font-semibold tracking-wide text-primary uppercase"><a href={ templ.SafeURL(blogPath) } class="link-hover">Blog</a></p>
+				<h1 class="font-display mt-2 text-4xl font-semibold tracking-tight">Posts tagged “{ v.Tag }”</h1>
+			} else {
+				<h1 class="font-display text-4xl font-semibold tracking-tight">Blog</h1>
+				<p class="mt-3 opacity-80">
+					News and notes from the team. <a href={ templ.SafeURL(feedPath) } class="link link-primary link-hover">Follow the feed</a>.
+				</p>
+			}
+			@postIndex(v)
+		</section>
+	}
+}
+
+templ postIndex(v indexView) {
+	<div id={ publicTarget } class="mt-10">
+		if len(v.Rows) == 0 {
+			<p class="rounded-box border border-base-300 p-8 text-center opacity-70">Nothing here yet.</p>
+		}
+		<ol class="divide-y divide-base-300">
+			for _, p := range v.Rows {
+				<li class="py-8 first:pt-0">
+					<article>
+						<p class="text-sm opacity-60"><time datetime={ p.PublishedAt.UTC().Format(time.RFC3339) }>{ postDate(p.PublishedAt) }</time></p>
+						<h2 class="font-display mt-1 text-2xl font-semibold tracking-tight">
+							<a href={ templ.SafeURL(postURL(p.Slug)) } class="link-hover">{ p.Title }</a>
+						</h2>
+						if p.Summary != "" {
+							<p class="mt-2 opacity-80">{ p.Summary }</p>
+						}
+						@tagList(p.Tags)
+					</article>
+				</li>
+			}
+		</ol>
+		@web.Pager(v.Page, publicTarget)
+	</div>
+}
+
+templ tagList(tags []string) {
+	if len(tags) > 0 {
+		<ul class="mt-3 flex flex-wrap gap-2" aria-label="Tags">
+			for _, t := range tags {
+				<li><a href={ templ.SafeURL(tagURL(t)) } class="badge badge-soft badge-secondary">{ t }</a></li>
+			}
+		</ul>
+	}
+}
+
+templ postPage(a article, m web.Meta) {
+	@public.Layout(a.Post.Title, m) {
+		<article class="mx-auto max-w-3xl px-4 py-12">
+			if a.Preview {
+				<div role="status" class="alert alert-warning alert-soft mb-8 flex flex-wrap gap-x-3">
+					<span>{ previewNote(a.Post) }</span>
+					if a.Post.ID != 0 {
+						<a href={ templ.SafeURL(editURL(a.Post.ID)) } class="link font-medium">Back to editing</a>
+					}
+				</div>
+				@problemList(a.Problems)
+			}
+			<header>
+				<p class="flex flex-wrap gap-x-2 text-sm opacity-60">
+					if a.Post.PublishedAt != nil {
+						<time datetime={ a.Post.PublishedAt.UTC().Format(time.RFC3339) }>{ postDate(*a.Post.PublishedAt) }</time>
+					} else {
+						<span>Not published</span>
+					}
+					if a.Author != "" {
+						<span aria-hidden="true">·</span>
+						<span>{ a.Author }</span>
+					}
+				</p>
+				<h1 class="font-display mt-2 text-4xl leading-tight font-semibold tracking-tight sm:text-5xl">{ a.Post.Title }</h1>
+				if a.Post.Summary != "" {
+					<p class="mt-4 text-lg opacity-80">{ a.Post.Summary }</p>
+				}
+				@tagList(a.Post.Tags)
+			</header>
+			if c := a.Cover; c != nil {
+				<figure class="mt-8">
+					<img
+						src={ media.VariantURL(c.Key, c.Widths[len(c.Widths)-1]) }
+						srcset={ media.Srcset(*c) }
+						sizes="(min-width: 48rem) 48rem, 100vw"
+						width={ strconv.Itoa(int(c.Width)) }
+						height={ strconv.Itoa(int(c.Height)) }
+						alt={ c.Alt }
+						class="h-auto w-full rounded-box bg-base-200"
+					/>
+					if c.Credit != "" {
+						<figcaption class="mt-2 text-sm opacity-60">{ c.Credit }</figcaption>
+					}
+				</figure>
+			}
+			<div class="prose mt-8 max-w-none">
+				@templ.Raw(string(a.Body))
+			</div>
+		</article>
+	}
+}
+
+// problemList is what the renderer left out of a post, for its editors.
+templ problemList(problems []markdown.Problem) {
+	if len(problems) > 0 {
+		<div role="alert" class="alert alert-warning alert-soft mb-6 block">
+			<p class="font-medium">Some parts of the post were left out:</p>
+			<ul class="mt-2 list-disc pl-5 text-sm">
+				for _, p := range problems {
+					<li>{ p.String() }</li>
+				}
+			</ul>
+		</div>
+	}
+}

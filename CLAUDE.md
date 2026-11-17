@@ -110,14 +110,14 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 
 ## Templates
 
-- Each dashboard has a Layout: `workspaces.Layout`, `account.Layout`, `platform.Layout`. They fill in a `web.Shell` (sidebar sections, user, links) for `web.ShellLayout`. Sign-in and other one-off pages use `web.Layout`; the public site has its own layout in `internal/public`. Pages start with `@web.PageHeader(title)`.
+- Each dashboard has a Layout: `workspaces.Layout`, `account.Layout`, `platform.Layout`. They fill in a `web.Shell` (sidebar sections, user, links) for `web.ShellLayout`. Sign-in and other one-off pages use `web.Layout`; the public site and the blog use `public.Layout`, which passes a `web.Meta` (description, canonical URL, social image, feed, `noindex`) to `web.Document`. Pages start with `@web.PageHeader(title)`.
 - Form controls go inside `@web.Field(label, name, errMsg)`, take `{ web.InputAttrs(name, errMsg)... }`, and use the `web.*Class` constants. A control that only makes sense without JS gets `[.js_&]:hidden`.
 - Components are daisyUI 5 classes (`btn`, `input`, `badge`, `alert`, ...) on the `quickstack` theme in `app.css`. Use theme colors (`bg-base-100`, `text-error`), not raw Tailwind palette colors. Chart colors are `chart-1`..`chart-5` and `chart-other`.
 - Charts: build a `chart.Data` and render `@chart.Card(d)`. They need no JavaScript; tooltips show on hover with CSS.
 - Avoid daisyUI `radial-progress` and `countdown`: they need inline `style`, which the CSP blocks.
 - The CSP blocks inline `<script>` blocks, `style="..."`, `onclick=`-style handlers, and `hx-on:*`. JavaScript goes in `frontend/src/`.
 - htmx is version 4 (docs at four.htmx.org; most examples online are for 2). Attributes don't inherit: put `hx-target`, `hx-swap` and the rest on the element that sends the request, or mark a parent's with `:inherited` (`hx-target:inherited`). Events have colon names (`htmx:after:swap`).
-- `app.css` scans `internal/**/*.{templ,go}` except `internal/public/`; `public.css` scans `internal/public/` and `internal/web/`. Both scan `frontend/src/**`. Write class names as complete literal strings; Tailwind can't see classes assembled at runtime.
+- `app.css` scans `internal/**/*.{templ,go}` except `internal/public/`; `public.css` scans `internal/public/`, `internal/blog/`, `internal/markdown/` and `internal/web/`. Both scan `frontend/src/**`. Write class names as complete literal strings; Tailwind can't see classes assembled at runtime.
 
 ## Islands
 

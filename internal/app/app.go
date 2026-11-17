@@ -14,6 +14,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/account"
 	"github.com/riadafridishibly/quickstack/internal/auth"
 	"github.com/riadafridishibly/quickstack/internal/blob"
+	"github.com/riadafridishibly/quickstack/internal/blog"
 	"github.com/riadafridishibly/quickstack/internal/insights"
 	"github.com/riadafridishibly/quickstack/internal/jobs"
 	"github.com/riadafridishibly/quickstack/internal/mail"
@@ -30,7 +31,8 @@ type Config struct {
 	// ViteURL is the Vite dev server origin. Empty serves the embedded build.
 	ViteURL        string
 	TrustedProxies []netip.Prefix
-	// PublicURL is the origin links in email point to.
+	// PublicURL is the site's origin, which links in email, the feed and
+	// the sitemap start with.
 	PublicURL string
 	// Jobs enqueues background jobs. Nil uses an insert-only client.
 	Jobs *jobs.Client
@@ -67,6 +69,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 	// The platform admin, for staff only.
 	adm := http.NewServeMux()
 	platform.Routes(adm, pool)
+	blog.AdminRoutes(adm, pool)
 	media.AdminRoutes(adm, pool, cfg.Blob, cfg.Jobs)
 	adm.Handle("/", notFound)
 
@@ -86,6 +89,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 	// Pages anyone can open, which show more to a signed-in user.
 	open := http.NewServeMux()
 	public.Routes(open, pool, tdb)
+	blog.Routes(open, pool, cfg.PublicURL)
 	workspaces.InviteRoutes(open, pool, cfg.Jobs, cfg.PublicURL)
 	open.Handle("/", notFound)
 

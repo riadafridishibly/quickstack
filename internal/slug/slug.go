@@ -12,7 +12,10 @@ var valid = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // Make lowercases s and joins its runs of ASCII letters and digits with
 // hyphens. Other characters are dropped, so the result can be empty.
-func Make(s string) string {
+func Make(s string) string { return MakeMax(s, MaxLen) }
+
+// MakeMax is Make for slugs of at most n bytes.
+func MakeMax(s string, n int) string {
 	var b strings.Builder
 	gap := false
 	for _, r := range strings.ToLower(s) {
@@ -22,7 +25,7 @@ func Make(s string) string {
 			}
 			b.WriteRune(r)
 			gap = false
-			if b.Len() >= MaxLen {
+			if b.Len() >= n {
 				break
 			}
 		} else {
@@ -33,4 +36,7 @@ func Make(s string) string {
 }
 
 // Valid reports whether s is a slug Make could have made.
-func Valid(s string) bool { return len(s) <= MaxLen && valid.MatchString(s) }
+func Valid(s string) bool { return ValidMax(s, MaxLen) }
+
+// ValidMax reports whether s is a slug MakeMax(_, n) could have made.
+func ValidMax(s string, n int) bool { return len(s) <= n && valid.MatchString(s) }

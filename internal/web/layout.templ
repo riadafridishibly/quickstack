@@ -5,9 +5,24 @@ import (
 	"strings"
 )
 
+// Meta describes a page to search engines, feed readers and link
+// previews. URLs in it are absolute.
+type Meta struct {
+	Description string
+	Canonical   string
+	// Image is a 1200×630 social card.
+	Image string
+	// Article marks the page as one article, such as a blog post, rather
+	// than a website's page.
+	Article bool
+	// Feed is the Atom feed the page belongs to.
+	Feed    string
+	NoIndex bool
+}
+
 // Document is the HTML shell every layout renders into. style is AppStyle
 // or PublicStyle.
-templ Document(title, style string) {
+templ Document(title, style string, m Meta) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -15,12 +30,52 @@ templ Document(title, style string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · Quickstack</title>
 			<link rel="icon" href="data:,"/>
+			@metaTags(title, m)
 			@AssetTags(style)
 		</head>
 		<body class="min-h-screen bg-base-200 text-base-content antialiased">
 			{ children... }
 		</body>
 	</html>
+}
+
+templ metaTags(title string, m Meta) {
+	if m.NoIndex {
+		<meta name="robots" content="noindex"/>
+	}
+	if m.Description != "" {
+		<meta name="description" content={ m.Description }/>
+	}
+	if m.Canonical != "" {
+		<link rel="canonical" href={ m.Canonical }/>
+	}
+	if m.Feed != "" {
+		<link rel="alternate" type="application/atom+xml" title="Quickstack blog" href={ m.Feed }/>
+	}
+	if m.Canonical != "" || m.Description != "" || m.Image != "" {
+		<meta property="og:site_name" content="Quickstack"/>
+		<meta property="og:title" content={ title }/>
+		if m.Article {
+			<meta property="og:type" content="article"/>
+		} else {
+			<meta property="og:type" content="website"/>
+		}
+		if m.Canonical != "" {
+			<meta property="og:url" content={ m.Canonical }/>
+		}
+		if m.Description != "" {
+			<meta property="og:description" content={ m.Description }/>
+		}
+		if m.Image != "" {
+			<meta property="og:image" content={ m.Image }/>
+			<meta property="og:image:width" content="1200"/>
+			<meta property="og:image:height" content="630"/>
+			<meta name="twitter:card" content="summary_large_image"/>
+			<meta name="twitter:image" content={ m.Image }/>
+		} else {
+			<meta name="twitter:card" content="summary"/>
+		}
+	}
 }
 
 // RequestError is the banner main.ts shows when an htmx request fails.
@@ -32,7 +87,7 @@ templ RequestError() {
 
 // Layout is for pages outside the dashboards: sign in, sign up, errors.
 templ Layout(title string) {
-	@Document(title, AppStyle) {
+	@Document(title, AppStyle, Meta{}) {
 		<header class="border-b border-base-300 bg-base-100">
 			<nav class="navbar mx-auto max-w-3xl px-4">
 				<a href="/" class="text-lg font-semibold tracking-tight">Quickstack</a>
@@ -114,7 +169,7 @@ type Shell struct {
 // on small screens. The drawer is a checkbox, so it works without
 // JavaScript.
 templ ShellLayout(title string, s Shell) {
-	@Document(title, AppStyle) {
+	@Document(title, AppStyle, Meta{}) {
 		<div class="drawer lg:drawer-open">
 			<input id="nav" type="checkbox" class="drawer-toggle"/>
 			<div class="drawer-content flex min-h-screen flex-col">

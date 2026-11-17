@@ -69,6 +69,31 @@ type PasswordReset struct {
 	ExpiresAt time.Time
 }
 
+type Post struct {
+	ID          int64
+	Slug        string
+	Title       string
+	Summary     string
+	Body        string
+	CoverID     *int64
+	AuthorID    *int64
+	Status      string
+	PublishedAt *time.Time
+	Tags        []string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type PostMedium struct {
+	PostID  int64
+	AssetID int64
+}
+
+type PostRedirect struct {
+	OldSlug string
+	PostID  int64
+}
+
 type Project struct {
 	WorkspaceID int64
 	ID          int64
