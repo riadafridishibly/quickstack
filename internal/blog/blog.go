@@ -7,7 +7,10 @@ package blog
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -61,6 +64,42 @@ var (
 	errInvalid  = errors.New("blog: invalid post")
 	errConflict = errors.New("blog: post changed")
 )
+
+// NewPost is a post for Create, with the fields of the admin form.
+type NewPost struct {
+	Title, Slug, Summary, Body string
+	// Cover is an image's address in Media, such as /media/ab12cd34.
+	Cover string
+	Tags  []string
+	// Publish publishes the post at PublishedAt, or now if it is nil.
+	// Otherwise the post is a draft.
+	Publish     bool
+	PublishedAt *time.Time
+}
+
+// Create validates p and saves it as a new post, as part of tx, as the
+// admin form does.
+func Create(ctx context.Context, tx pgx.Tx, actorID int64, p NewPost) (db.Post, error) {
+	v := url.Values{
+		"title": {p.Title}, "slug": {p.Slug}, "summary": {p.Summary}, "body": {p.Body},
+		"cover": {p.Cover}, "tags": {strings.Join(p.Tags, ",")}, "action": {actionSave},
+	}
+	if p.Publish {
+		v.Set("action", actionPublish)
+	}
+	if p.PublishedAt != nil {
+		v.Set("published_at", p.PublishedAt.UTC().Format(publishAtLayout))
+	}
+	f := postFormOfValues(v.Get)
+	if !f.validate() {
+		return db.Post{}, fmt.Errorf("%w: %v", errInvalid, f.Errors)
+	}
+	post, err := save(ctx, tx, actorID, nil, &f)
+	if errors.Is(err, errInvalid) {
+		return db.Post{}, fmt.Errorf("%w: %v", errInvalid, f.Errors)
+	}
+	return post, err
+}
 
 // save writes the validated form f as part of tx: a new post when old is
 // nil, a change to old otherwise. It returns errInvalid, with f.Errors set,

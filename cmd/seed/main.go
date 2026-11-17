@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/riadafridishibly/quickstack/internal/blob"
 	"github.com/riadafridishibly/quickstack/internal/config"
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/seed"
@@ -33,6 +34,10 @@ func run(reset, allowRemote bool) error {
 	if !allowRemote && !isLocal(cfg.DatabaseURL) {
 		return fmt.Errorf("QUICKSTACK_DATABASE_URL isn't on this machine; pass --allow-remote to seed it anyway")
 	}
+	store, err := blob.Open(cfg.BlobURL)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
 	if err := db.Migrate(ctx, cfg.MigrateURL); err != nil {
 		return err
@@ -42,11 +47,11 @@ func run(reset, allowRemote bool) error {
 		return err
 	}
 	defer pool.Close()
-	err = seed.Run(ctx, pool, reset, func(msg string, args ...any) { slog.Info(msg, args...) })
+	err = seed.Run(ctx, pool, store, reset, func(msg string, args ...any) { slog.Info(msg, args...) })
 	if err != nil {
 		return err
 	}
-	fmt.Println("\nSign in at " + cfg.PublicURL + "/login as owner@seed.test (or admin@, manager@, member@, viewer@seed.test), password " + seed.Password)
+	fmt.Println("\nSign in at " + cfg.PublicURL + "/login as owner@seed.test (or admin@, editor@, manager@, member@, viewer@seed.test), password " + seed.Password)
 	return nil
 }
 

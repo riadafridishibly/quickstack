@@ -18,3 +18,13 @@ DELETE FROM workspaces WHERE slug = @slug;
 
 -- name: SeedDeleteAccount :exec
 DELETE FROM accounts WHERE email = @email;
+
+-- name: SeedDeletePost :exec
+DELETE FROM posts WHERE slug = @slug;
+
+-- name: SeedDeleteAssets :many
+-- Deletes the images the accounts with these emails uploaded, and returns
+-- their keys so their files can be deleted.
+DELETE FROM assets
+WHERE created_by IN (SELECT id FROM accounts WHERE email = ANY(@emails::text[]))
+RETURNING key;

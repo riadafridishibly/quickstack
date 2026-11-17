@@ -33,6 +33,43 @@ func (q *Queries) SeedDeleteAccount(ctx context.Context, email string) error {
 	return err
 }
 
+const seedDeleteAssets = `-- name: SeedDeleteAssets :many
+DELETE FROM assets
+WHERE created_by IN (SELECT id FROM accounts WHERE email = ANY($1::text[]))
+RETURNING key
+`
+
+// Deletes the images the accounts with these emails uploaded, and returns
+// their keys so their files can be deleted.
+func (q *Queries) SeedDeleteAssets(ctx context.Context, emails []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, seedDeleteAssets, emails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		items = append(items, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const seedDeletePost = `-- name: SeedDeletePost :exec
+DELETE FROM posts WHERE slug = $1
+`
+
+func (q *Queries) SeedDeletePost(ctx context.Context, slug string) error {
+	_, err := q.db.Exec(ctx, seedDeletePost, slug)
+	return err
+}
+
 const seedDeleteWorkspace = `-- name: SeedDeleteWorkspace :exec
 DELETE FROM workspaces WHERE slug = $1
 `

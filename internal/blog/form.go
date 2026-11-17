@@ -53,17 +53,20 @@ type postForm struct {
 	updatedAt time.Time
 }
 
-func postFormFrom(r *http.Request) postForm {
+func postFormFrom(r *http.Request) postForm { return postFormOfValues(r.PostFormValue) }
+
+// postFormOfValues reads the form's fields with get.
+func postFormOfValues(get func(name string) string) postForm {
 	f := postForm{
-		Title:     strings.Join(strings.Fields(r.PostFormValue("title")), " "),
-		Slug:      strings.TrimSpace(r.PostFormValue("slug")),
-		Summary:   strings.Join(strings.Fields(r.PostFormValue("summary")), " "),
-		Body:      strings.TrimSpace(strings.ReplaceAll(r.PostFormValue("body"), "\r\n", "\n")),
-		Cover:     strings.TrimSpace(r.PostFormValue("cover")),
-		Tags:      strings.TrimSpace(r.PostFormValue("tags")),
-		PublishAt: strings.TrimSpace(r.PostFormValue("published_at")),
-		UpdatedAt: r.PostFormValue("updated_at"),
-		Action:    r.PostFormValue("action"),
+		Title:     strings.Join(strings.Fields(get("title")), " "),
+		Slug:      strings.TrimSpace(get("slug")),
+		Summary:   strings.Join(strings.Fields(get("summary")), " "),
+		Body:      strings.TrimSpace(strings.ReplaceAll(get("body"), "\r\n", "\n")),
+		Cover:     strings.TrimSpace(get("cover")),
+		Tags:      strings.TrimSpace(get("tags")),
+		PublishAt: strings.TrimSpace(get("published_at")),
+		UpdatedAt: get("updated_at"),
+		Action:    get("action"),
 		Errors:    map[string]string{},
 	}
 	if f.Action != actionPublish && f.Action != actionUnpublish {

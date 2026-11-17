@@ -14,21 +14,24 @@ It comes with:
 | Sign in | `/login`, `/signup`, `/forgot-password` | argon2id passwords, sessions in Postgres, rate limits, reset by email |
 | Workspace dashboard | `/w/{ws}` | tenant middleware, workspace roles, overview charts, projects with live search, a task board (htmx + a drag-and-drop island), members and invitations |
 | Account dashboard | `/account` | profile, password, sessions on other devices |
-| Platform admin | `/admin` | platform roles, accounts, workspaces, audit log, media uploads |
+| Platform admin | `/admin` | platform roles (superadmin, support, editor), accounts, workspaces, audit log, media uploads |
 | Public site | `/`, `/p/{ws}` | its own layout and stylesheet, cached pages |
+| Blog | `/blog`, `/admin/blog` | posts in Markdown with callouts and Hugo-style shortcodes, scheduling, a CodeMirror editor with live preview, image uploads resized by libvips, an Atom feed and the sitemap |
 
 ## Run it
 
-It needs Go, Node, PostgreSQL 18 (or Docker) and libvips for development: `brew install vips`, or `apt install libvips-dev`.
+It needs Go, Node, PostgreSQL 18 (or Docker) and libvips 8.16 or newer for development: `brew install vips`, or `apt install libvips-dev`. libvips comes in through cgo, so it is needed to build, not only to run.
 
 ```sh
 make setup        # pnpm packages, Playwright's Chromium, pre-push hook
 make db-setup     # or: make db-up for Postgres in Docker
-make seed         # sample accounts and data; password seed-password
+make seed         # sample accounts, workspaces and blog posts; password seed-password
 make dev          # open http://localhost:7360
 ```
 
-Sign in as `owner@seed.test`, or `admin@seed.test` for the platform admin. Mail goes to http://localhost:7360/dev/mail in development.
+Sign in as `owner@seed.test`, `admin@seed.test` for the platform admin, or `editor@seed.test` to write blog posts. Mail goes to http://localhost:7360/dev/mail in development.
+
+Uploaded images go to `./tmp/media` in development. To try an S3-compatible bucket instead, run `make s3-up` (SeaweedFS in Docker) and set `QUICKSTACK_BLOB_URL` as `.env.example` shows.
 
 `make check` runs everything that must pass; `make e2e` runs the browser tests. `make build` puts the app in `bin/quickstack` for this machine.
 
@@ -42,7 +45,27 @@ make dist TARGET=linux-amd64     # or linux-arm64, freebsd-amd64
 
 `dist/quickstack-linux-amd64.tar.gz` holds `bin/quickstack`, the libraries in `lib/`, and their licences in `share/licenses/`. On the server, unpack it and run its `install` script as root: it copies the release into `/opt/quickstack` owned by root, and creates the `quickstack` user with `/var/lib/quickstack` for uploads. Run the app as that user. The binary loads its libraries from `/opt/quickstack/lib`, so only root may write there. Linux servers need glibc 2.28 or newer (RHEL 8, Debian 10, Ubuntu 20.04 and later); FreeBSD servers need 14.0 or newer.
 
-`make docker` builds a Docker image with the same layout. Moving to a newer kit means changing the version and checksums in `scripts/vips-kit`.
+`make docker` builds a Docker image with the same layout, so the host needs no libvips either:
+
+```sh
+make docker
+docker run -p 8360:8360 \
+  -e QUICKSTACK_DATABASE_URL=postgres://quickstack_app:…@db/quickstack \
+  -e QUICKSTACK_MIGRATE_URL=postgres://quickstack_owner:…@db/quickstack \
+  -e QUICKSTACK_PUBLIC_URL=https://example.com \
+  -v quickstack-media:/var/lib/quickstack/media \
+  quickstack
+```
+
+The server applies migrations as it starts. Uploads go to `/var/lib/quickstack/media`, or to a bucket when `QUICKSTACK_BLOB_URL` is set:
+
+```sh
+QUICKSTACK_BLOB_URL=s3://key:secret@bucket/prefix?endpoint=s3.example.com&region=eu-central-1
+```
+
+Without `key:secret`, the `AWS_*` variables, `~/.aws/credentials` or the instance role apply. Files are served through the app, so the bucket can stay private.
+
+Moving to a newer kit means changing the version and checksums in `scripts/vips-kit`.
 
 ## Start a new project
 

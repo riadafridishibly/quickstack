@@ -66,7 +66,7 @@ func Check(r *http.Request) (Upload, error) {
 		if p.FileName() == "" {
 			return Upload{}, errNoFile
 		}
-		return checkData(data)
+		return CheckData(data)
 	}
 }
 
@@ -77,7 +77,8 @@ func readError(err error) error {
 	return err
 }
 
-func checkData(data []byte) (Upload, error) {
+// CheckData checks an image read some other way, as Check does.
+func CheckData(data []byte) (Upload, error) {
 	switch {
 	case len(data) == 0:
 		return Upload{}, errEmpty

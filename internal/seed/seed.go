@@ -1,20 +1,26 @@
 // Package seed fills a development database with sample accounts,
-// workspaces, projects and 90 days of tasks, through the app's own write
-// functions where it can.
+// workspaces, projects, 90 days of tasks, and blog posts with images,
+// through the app's own write functions where it can.
 package seed
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/blob"
+	"github.com/riadafridishibly/quickstack/internal/blog"
 	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/jobs"
+	"github.com/riadafridishibly/quickstack/internal/media"
 	"github.com/riadafridishibly/quickstack/internal/tenant"
 	"github.com/riadafridishibly/quickstack/internal/workspaces"
 )
@@ -32,6 +38,7 @@ type person struct {
 var people = []person{
 	{"admin@seed.test", "Ada Admin", auth.Superadmin},
 	{"support@seed.test", "Sam Support", auth.Support},
+	{"editor@seed.test", "Eve Editor", auth.Editor},
 	{"owner@seed.test", "Olivia Owner", ""},
 	{"manager@seed.test", "Arjun Manager", ""},
 	{"member@seed.test", "Mia Member", ""},
@@ -83,11 +90,76 @@ var nouns = []string{
 	"dark mode", "the API rate limits", "push notification copy", "the support macros", "the backup job",
 }
 
-// Run seeds the database. With reset, it first deletes the sample data a
-// previous run left.
-func Run(ctx context.Context, pool *pgxpool.Pool, reset bool, log func(string, ...any)) error {
+//go:embed testdata
+var files embed.FS
+
+// images are uploaded to Media, by name in testdata. A post's body and
+// cover name one as image:<name>.
+var images = []struct{ Name, Alt, Credit string }{
+	{"dusk", "The sun setting behind three ridges", "Drawn for the Quickstack seed"},
+	{"dunes", "Dunes under a high sun", "Drawn for the Quickstack seed"},
+	{"sea", "A calm sea meeting a sandy shore", "Drawn for the Quickstack seed"},
+	{"aurora", "Northern lights over dark hills", "Drawn for the Quickstack seed"},
+}
+
+type post struct {
+	Slug, Title, Summary string
+	Cover                string
+	Tags                 []string
+	// Body is a file in testdata/posts.
+	Body string
+	// Published is the publish time in days from now; nil leaves a draft.
+	Published *int
+}
+
+func days(n int) *int { return &n }
+
+var posts = []post{
+	{
+		Slug: "welcome-to-the-blog", Title: "Welcome to the blog", Body: "welcome.md",
+		Summary: "Quickstack has a blog: posts in Markdown, written in the admin, with scheduling, images and a feed.",
+		Cover:   "image:dusk", Tags: []string{"news"}, Published: days(-18),
+	},
+	{
+		Slug: "writing-posts-in-markdown", Title: "Writing posts in Markdown", Body: "markdown.md",
+		Summary: "Tables, callouts, code, images and every shortcode, in one post.",
+		Cover:   "image:dunes", Tags: []string{"guides", "markdown"}, Published: days(-6),
+	},
+	{
+		Slug: "images-without-the-weight", Title: "Images without the weight", Body: "images.md",
+		Summary: "How uploads become WebP at several widths and a social card.",
+		Cover:   "image:sea", Tags: []string{"engineering", "images"}, Published: days(7),
+	},
+	{
+		Slug: "roadmap-for-spring", Title: "Roadmap for spring", Body: "roadmap.md",
+		Summary: "What comes after the blog.",
+		Cover:   "image:aurora", Tags: []string{"roadmap"},
+	},
+}
+
+// Run seeds the database and stores the sample images in store. With
+// reset, it first deletes the sample data a previous run left.
+func Run(ctx context.Context, pool *pgxpool.Pool, store blob.Store, reset bool, log func(string, ...any)) error {
 	q := db.New(pool)
 	if reset {
+		for _, p := range posts {
+			if err := q.SeedDeletePost(ctx, p.Slug); err != nil {
+				return err
+			}
+		}
+		emails := make([]string, len(people))
+		for i, p := range people {
+			emails[i] = p.Email
+		}
+		keys, err := q.SeedDeleteAssets(ctx, emails)
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			if err := store.DeletePrefix(ctx, key+"/"); err != nil {
+				return err
+			}
+		}
 		for _, s := range spaces {
 			if err := q.SeedDeleteWorkspace(ctx, s.Slug); err != nil {
 				return err
@@ -178,6 +250,70 @@ func Run(ctx context.Context, pool *pgxpool.Pool, reset bool, log func(string, .
 		}
 		log("workspace", "url", "/w/"+s.Slug, "projects", len(s.Projects), "tasks", tasks)
 	}
+	return seedBlog(ctx, pool, store, ids["editor@seed.test"], now, log)
+}
+
+// seedBlog uploads the images, makes their variants here rather than in a
+// job, and writes the posts.
+func seedBlog(ctx context.Context, pool *pgxpool.Pool, store blob.Store, editorID int64, now time.Time, log func(string, ...any)) error {
+	jc, err := jobs.New(pool, nil)
+	if err != nil {
+		return err
+	}
+	var urls []string
+	for _, im := range images {
+		data, err := files.ReadFile("testdata/" + im.Name + ".jpg")
+		if err != nil {
+			return err
+		}
+		up, err := media.CheckData(data)
+		if err != nil {
+			return fmt.Errorf("image %s: %w", im.Name, err)
+		}
+		var a db.Asset
+		err = pgx.BeginTxFunc(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) (err error) {
+			if a, err = media.Create(ctx, tx, store, jc, editorID, up); err != nil {
+				return err
+			}
+			_, err = db.New(tx).UpdateAssetText(ctx, db.UpdateAssetTextParams{Key: a.Key, Alt: im.Alt, Credit: im.Credit})
+			return err
+		})
+		if err != nil {
+			media.Discard(ctx, store, a)
+			return fmt.Errorf("image %s: %w", im.Name, err)
+		}
+		if err := media.Process(ctx, pool, store, a.ID); err != nil {
+			return fmt.Errorf("image %s: %w", im.Name, err)
+		}
+		urls = append(urls, "image:"+im.Name, media.URL(a.Key))
+	}
+	log("images", "count", len(images))
+
+	link := strings.NewReplacer(urls...)
+	err = pgx.BeginTxFunc(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		for _, p := range posts {
+			body, err := files.ReadFile("testdata/posts/" + p.Body)
+			if err != nil {
+				return err
+			}
+			np := blog.NewPost{
+				Title: p.Title, Slug: p.Slug, Summary: p.Summary, Body: link.Replace(string(body)),
+				Cover: link.Replace(p.Cover), Tags: p.Tags, Publish: p.Published != nil,
+			}
+			if p.Published != nil {
+				at := now.AddDate(0, 0, *p.Published)
+				np.PublishedAt = &at
+			}
+			if _, err := blog.Create(ctx, tx, editorID, np); err != nil {
+				return fmt.Errorf("post %s: %w", p.Slug, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	log("posts", "url", "/blog", "count", len(posts))
 	return nil
 }
 
