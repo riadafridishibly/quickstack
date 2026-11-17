@@ -11,7 +11,6 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/apptest"
 	"github.com/riadafridishibly/quickstack/internal/auth"
-	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/tenant"
 	"github.com/riadafridishibly/quickstack/internal/testdb"
@@ -49,7 +48,7 @@ func TestList(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	_, c := authtest.Member(t, s.Pool, ws, "ana@example.com", auth.Viewer)
+	_, c := testdb.Member(t, s.Pool, ws, "ana@example.com", auth.Viewer)
 	createProject(t, s.Pool, ws, "Website relaunch")
 	createProject(t, s.Pool, ws, "50% faster builds")
 
@@ -69,7 +68,7 @@ func TestCreateAndEdit(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	_, c := authtest.Member(t, s.Pool, ws, "ana@example.com", auth.Member)
+	_, c := testdb.Member(t, s.Pool, ws, "ana@example.com", auth.Member)
 
 	bad := url.Values{"name": {""}, "status": {"active"}}
 	w := s.Do(apptest.Req{Path: "/w/acme/projects", Cookie: c, Form: bad, Target: "-"})
@@ -104,7 +103,7 @@ func TestTasks(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	ana, c := authtest.Member(t, s.Pool, ws, "ana@example.com", auth.Member)
+	ana, c := testdb.Member(t, s.Pool, ws, "ana@example.com", auth.Member)
 	pid := createProject(t, s.Pool, ws, "Launch")
 	base := fmt.Sprintf("/w/acme/projects/%d", pid)
 
@@ -174,9 +173,9 @@ func TestViewersAndOtherWorkspaces(t *testing.T) {
 	s := apptest.New(t)
 	acme := testdb.CreateWorkspace(t, s.Pool, "acme")
 	globex := testdb.CreateWorkspace(t, s.Pool, "globex")
-	_, viewer := authtest.Member(t, s.Pool, acme, "vic@example.com", auth.Viewer)
-	ana, member := authtest.Member(t, s.Pool, acme, "ana@example.com", auth.Member)
-	authtest.Join(t, s.Pool, globex, ana, auth.Member)
+	_, viewer := testdb.Member(t, s.Pool, acme, "vic@example.com", auth.Viewer)
+	ana, member := testdb.Member(t, s.Pool, acme, "ana@example.com", auth.Member)
+	testdb.Join(t, s.Pool, globex, ana, auth.Member)
 	pid := createProject(t, s.Pool, acme, "Launch")
 	other := createProject(t, s.Pool, globex, "Secret")
 

@@ -43,16 +43,26 @@ type Config struct {
 }
 
 func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
+	h, _, err := build(cfg, pool)
+	return h, err
+}
+
+// routes are the workspace and admin routes with the action each requires.
+type routes struct {
+	workspace, admin []auth.Route
+}
+
+func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	if cfg.Blob == nil {
-		return nil, errors.New("app: no blob store")
+		return nil, routes{}, errors.New("app: no blob store")
 	}
 	assets, err := web.NewAssets(cfg.ViteURL)
 	if err != nil {
-		return nil, err
+		return nil, routes{}, err
 	}
 	if cfg.Jobs == nil {
 		if cfg.Jobs, err = jobs.New(pool, nil); err != nil {
-			return nil, err
+			return nil, routes{}, err
 		}
 	}
 	tdb := tenant.NewDB(pool)
@@ -61,16 +71,18 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 
 	// Inside one workspace, behind workspaces.Middleware.
 	ws := http.NewServeMux()
-	insights.Routes(ws, tdb)
-	projects.Routes(ws, tdb)
-	workspaces.WorkspaceRoutes(ws, pool, cfg.Jobs, cfg.PublicURL)
+	wsr := auth.Workspace.Router(ws)
+	insights.Routes(wsr, tdb)
+	projects.Routes(wsr, tdb)
+	workspaces.WorkspaceRoutes(wsr, pool, cfg.Jobs, cfg.PublicURL)
 	ws.Handle("/", notFound)
 
 	// The platform admin, for staff only.
 	adm := http.NewServeMux()
-	platform.Routes(adm, pool)
-	blog.AdminRoutes(adm, pool)
-	media.AdminRoutes(adm, pool, cfg.Blob, cfg.Jobs)
+	admr := auth.Platform.Router(adm)
+	platform.Routes(admr, pool)
+	blog.AdminRoutes(admr, pool)
+	media.AdminRoutes(admr, pool, cfg.Blob, cfg.Jobs)
 	adm.Handle("/", notFound)
 
 	// Everything that needs a signed-in user.
@@ -80,7 +92,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 	inWorkspace := workspaces.Middleware(pool)(ws)
 	signedIn.Handle("/w/{ws}", inWorkspace)
 	signedIn.Handle("/w/{ws}/", inWorkspace)
-	staff := auth.RequirePlatform(auth.OpenAdmin)(adm)
+	staff := auth.Platform.Require(auth.OpenAdmin)(adm)
 	signedIn.Handle("/admin", staff)
 	signedIn.Handle("/admin/", staff)
 	signedIn.Handle("/", notFound)
@@ -128,7 +140,7 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 		}
 		return r.Method + " (unrouted)"
 	})(h)
-	return h, nil
+	return h, routes{workspace: wsr.Routes(), admin: admr.Routes()}, nil
 }
 
 // isMount reports whether p is a pattern that hands the request on to
@@ -147,5 +159,6 @@ func Workers(pool *pgxpool.Pool, sender mail.Sender, store blob.Store) *jobs.Set
 	mail.AddWorker(w, sender)
 	media.AddWorkers(w, pool, store)
 	periodic := auth.AddWorkers(w, pool)
+	periodic = append(periodic, workspaces.AddWorkers(w, pool)...)
 	return &jobs.Setup{Workers: w, Periodic: periodic}
 }

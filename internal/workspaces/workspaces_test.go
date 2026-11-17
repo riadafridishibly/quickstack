@@ -39,7 +39,7 @@ func TestOnlyMembersSeeAWorkspace(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	_, member := authtest.Member(t, s.Pool, ws, "ana@example.com", auth.Viewer)
+	_, member := testdb.Member(t, s.Pool, ws, "ana@example.com", auth.Viewer)
 	stranger, other := authtest.SignIn(t, s.Pool, "bo@example.com")
 	authtest.SetPlatformRole(t, s.Pool, stranger, auth.Superadmin)
 
@@ -53,7 +53,7 @@ func TestViewerCannotManage(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	_, c := authtest.Member(t, s.Pool, ws, "ana@example.com", auth.Viewer)
+	_, c := testdb.Member(t, s.Pool, ws, "ana@example.com", auth.Viewer)
 
 	apptest.Status(t, s.Get("/w/acme/settings", c), http.StatusForbidden)
 	apptest.Status(t, s.Post("/w/acme/members/invite", c, url.Values{"email": {"x@example.com"}, "role": {"member"}}), http.StatusForbidden)
@@ -67,7 +67,7 @@ func TestInviteAndAccept(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	_, owner := authtest.Member(t, s.Pool, ws, "owner@example.com", auth.Owner)
+	_, owner := testdb.Member(t, s.Pool, ws, "owner@example.com", auth.Owner)
 
 	w := s.Do(apptest.Req{Path: "/w/acme/members/invite", Cookie: owner, Target: "invitations",
 		Form: url.Values{"email": {"Bo@Example.com"}, "role": {"owner"}}})
@@ -102,9 +102,9 @@ func TestOwnerRules(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	ownerID, owner := authtest.Member(t, s.Pool, ws, "owner@example.com", auth.Owner)
-	adminID, admin := authtest.Member(t, s.Pool, ws, "admin@example.com", auth.Admin)
-	memberID, _ := authtest.Member(t, s.Pool, ws, "member@example.com", auth.Member)
+	ownerID, owner := testdb.Member(t, s.Pool, ws, "owner@example.com", auth.Owner)
+	adminID, admin := testdb.Member(t, s.Pool, ws, "admin@example.com", auth.Admin)
+	memberID, _ := testdb.Member(t, s.Pool, ws, "member@example.com", auth.Member)
 	role := func(id int64) string { return "/w/acme/members/" + strconv.FormatInt(id, 10) + "/role" }
 
 	// An admin manages members but not owners.
@@ -115,6 +115,7 @@ func TestOwnerRules(t *testing.T) {
 	}
 	apptest.Status(t, s.Post(role(memberID), admin, url.Values{"role": {"owner"}}), http.StatusForbidden)
 	apptest.Status(t, s.Post(role(ownerID), admin, url.Values{"role": {"member"}}), http.StatusForbidden)
+	apptest.Status(t, s.Post("/w/acme/members/"+strconv.FormatInt(ownerID, 10)+"/delete", admin, url.Values{}), http.StatusForbidden)
 
 	// The last owner can't step down or leave.
 	w = s.Post(role(ownerID), owner, url.Values{"role": {"admin"}})
@@ -131,7 +132,7 @@ func TestSettings(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	_, c := authtest.Member(t, s.Pool, ws, "owner@example.com", auth.Owner)
+	_, c := testdb.Member(t, s.Pool, ws, "owner@example.com", auth.Owner)
 	testdb.CreateWorkspace(t, s.Pool, "taken")
 
 	apptest.Status(t, s.Post("/w/acme/settings", c, url.Values{"name": {"Acme"}, "slug": {"taken"}}), http.StatusUnprocessableEntity)

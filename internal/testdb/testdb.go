@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"sync"
@@ -19,6 +20,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
+	"github.com/riadafridishibly/quickstack/internal/auth"
+	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/tenant"
 )
@@ -59,6 +62,23 @@ func CreateWorkspace(t testing.TB, pool *pgxpool.Pool, slug string) *tenant.Work
 		t.Fatal(err)
 	}
 	return &tenant.Workspace{ID: w.ID, Slug: w.Slug, Name: w.Name}
+}
+
+// Join makes the account a member of ws with role.
+func Join(t testing.TB, pool *pgxpool.Pool, ws *tenant.Workspace, accountID int64, role auth.Role) {
+	t.Helper()
+	err := db.New(pool).AddMember(t.Context(), db.AddMemberParams{WorkspaceID: ws.ID, AccountID: accountID, Role: string(role)})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Member signs in a new account that has role in ws.
+func Member(t testing.TB, pool *pgxpool.Pool, ws *tenant.Workspace, email string, role auth.Role) (int64, *http.Cookie) {
+	t.Helper()
+	id, c := authtest.SignIn(t, pool, email)
+	Join(t, pool, ws, id, role)
+	return id, c
 }
 
 func migratedTemplate(t testing.TB, admin *url.URL) string {

@@ -92,21 +92,18 @@ func InviteRoutes(mux *http.ServeMux, pool *pgxpool.Pool, jc *jobs.Client, publi
 	mux.Handle("POST /invite/{token}", web.Handle(h.accept))
 }
 
-// WorkspaceRoutes adds a workspace's members and settings pages to mux,
+// WorkspaceRoutes adds a workspace's members and settings pages to r,
 // which serves behind Middleware.
-func WorkspaceRoutes(mux *http.ServeMux, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
+func WorkspaceRoutes(r *auth.WorkspaceRouter, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
 	h := newHandler(pool, jc, publicURL)
-	manage := auth.Require(auth.ManageMembers)
-	mux.Handle("GET /w/{ws}/members", web.Handle(h.members))
-	mux.Handle("POST /w/{ws}/members/invite", manage(web.Handle(h.invite)))
-	mux.Handle("POST /w/{ws}/members/{id}/role", manage(web.Handle(h.changeRole)))
-	// Removing someone needs ManageMembers, unless they remove themselves.
-	mux.Handle("POST /w/{ws}/members/{id}/delete", web.Handle(h.removeMember))
-	mux.Handle("POST /w/{ws}/invitations/{id}/delete", manage(web.Handle(h.revokeInvitation)))
-
-	settings := auth.Require(auth.ManageWorkspace)
-	mux.Handle("GET /w/{ws}/settings", settings(web.Handle(h.settings)))
-	mux.Handle("POST /w/{ws}/settings", settings(web.Handle(h.saveSettings)))
+	r.Handle("GET /w/{ws}/members", auth.AnyMember, h.members)
+	r.Handle("POST /w/{ws}/members/invite", auth.ManageMembers, h.invite)
+	r.Handle("POST /w/{ws}/members/{id}/role", auth.ManageMembers, h.changeRole)
+	// Anyone may leave; removing someone else is checked by canManage.
+	r.Handle("POST /w/{ws}/members/{id}/delete", auth.AnyMember, h.removeMember)
+	r.Handle("POST /w/{ws}/invitations/{id}/delete", auth.ManageMembers, h.revokeInvitation)
+	r.Handle("GET /w/{ws}/settings", auth.ManageWorkspace, h.settings)
+	r.Handle("POST /w/{ws}/settings", auth.ManageWorkspace, h.saveSettings)
 }
 
 type workspaceForm struct {

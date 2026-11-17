@@ -31,18 +31,18 @@ type handler struct {
 	q    *db.Queries
 }
 
-// Routes adds the admin pages to mux. Wrap it in auth.RequirePlatform(auth.OpenAdmin).
-func Routes(mux *http.ServeMux, pool *pgxpool.Pool) {
+// Routes adds the admin pages to r. Serve them behind
+// auth.Platform.Require(auth.OpenAdmin).
+func Routes(r *auth.PlatformRouter, pool *pgxpool.Pool) {
 	h := handler{pool: pool, q: db.New(pool)}
-	view := auth.RequirePlatform(auth.ViewAccounts)
-	mux.Handle("GET "+homePath, web.Handle(h.home))
-	mux.Handle("GET /admin/accounts", view(web.Handle(h.accounts)))
-	mux.Handle("GET /admin/accounts/{id}", view(web.Handle(h.account)))
-	mux.Handle("POST /admin/accounts/{id}/role", auth.RequirePlatform(auth.ManagePlatformRoles)(web.Handle(h.setRole)))
-	mux.Handle("POST /admin/accounts/{id}/sign-out", auth.RequirePlatform(auth.SignOutAccounts)(web.Handle(h.signOut)))
-	mux.Handle("GET /admin/workspaces", view(web.Handle(h.workspaces)))
-	mux.Handle("GET /admin/workspaces/{id}", view(web.Handle(h.workspace)))
-	mux.Handle("GET /admin/audit", view(web.Handle(h.audit)))
+	r.Handle("GET "+homePath, auth.OpenAdmin, h.home)
+	r.Handle("GET /admin/accounts", auth.ViewAccounts, h.accounts)
+	r.Handle("GET /admin/accounts/{id}", auth.ViewAccounts, h.account)
+	r.Handle("POST /admin/accounts/{id}/role", auth.ManagePlatformRoles, h.setRole)
+	r.Handle("POST /admin/accounts/{id}/sign-out", auth.SignOutAccounts, h.signOut)
+	r.Handle("GET /admin/workspaces", auth.ViewAccounts, h.workspaces)
+	r.Handle("GET /admin/workspaces/{id}", auth.ViewAccounts, h.workspace)
+	r.Handle("GET /admin/audit", auth.ViewAccounts, h.audit)
 }
 
 // section is an entry in the admin sidebar and the action it needs.
@@ -63,7 +63,7 @@ var sections = []section{
 func navItems(role auth.PlatformRole) []web.NavItem {
 	var items []web.NavItem
 	for _, s := range sections {
-		if auth.CanPlatform(role, s.action) {
+		if auth.Platform.Can(role, s.action) {
 			items = append(items, s.item)
 		}
 	}
@@ -79,7 +79,7 @@ type homeView struct {
 // they may open.
 func (h handler) home(w http.ResponseWriter, r *http.Request) error {
 	role := auth.From(r.Context()).PlatformRole
-	if !auth.CanPlatform(role, auth.ViewAccounts) {
+	if !auth.Platform.Can(role, auth.ViewAccounts) {
 		items := navItems(role)
 		if len(items) == 0 {
 			return web.ErrForbidden

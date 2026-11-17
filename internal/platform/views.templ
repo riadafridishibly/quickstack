@@ -147,7 +147,7 @@ templ accountPage(v accountView) {
 						<dd class="tabular-nums">{ strconv.Itoa(len(v.Sessions)) }</dd>
 					</div>
 				</dl>
-				if auth.CanPlatform(me.PlatformRole, auth.ManagePlatformRoles) && me.ID != v.Account.ID {
+				if auth.Platform.CanIn(ctx, auth.ManagePlatformRoles) && me.ID != v.Account.ID {
 					<form method="post" action={ templ.SafeURL(accountURL(v.Account.ID) + "/role") } class="flex flex-wrap items-end gap-2">
 						@web.Field("Platform role", "role", "") {
 							<select { web.InputAttrs("role", "")... } class="select w-48">
@@ -162,7 +162,7 @@ templ accountPage(v accountView) {
 				} else if v.Account.PlatformRole != nil {
 					<p class="text-sm">Platform role: <span class="badge badge-soft badge-secondary">{ auth.PlatformRole(*v.Account.PlatformRole).Label() }</span></p>
 				}
-				if auth.CanPlatform(me.PlatformRole, auth.SignOutAccounts) && len(v.Sessions) > 0 {
+				if auth.Platform.CanIn(ctx, auth.SignOutAccounts) && len(v.Sessions) > 0 {
 					<form method="post" action={ templ.SafeURL(accountURL(v.Account.ID) + "/sign-out") }>
 						<button type="submit" class={ web.SecondaryButtonClass }>Sign out everywhere</button>
 					</form>

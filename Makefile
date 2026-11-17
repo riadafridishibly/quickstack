@@ -135,6 +135,11 @@ check-deps:
 	@deps=$$(go list -deps ./cmd/quickstack) && \
 	if printf '%s\n' "$$deps" | grep -q '/internal/seed'; then \
 		echo "cmd/quickstack must not depend on internal/seed"; exit 1; fi
+	@mod=$$(go list -m) && deps=$$(go list -deps ./internal/auth/...) || exit 1; \
+	bad=$$(printf '%s\n' "$$deps" | grep "^$$mod/" | grep -vE "^$$mod/internal/(auth|db|web|mail|jobs)(/|$$)"); \
+	if [ -n "$$bad" ]; then \
+		echo "internal/auth may use only db, web, mail and jobs, so it can be copied. It uses:"; \
+		echo "$$bad"; exit 1; fi
 
 e2e: build ## Playwright tests against the built app
 	psql "$(PG_ADMIN_URL)" -v ON_ERROR_STOP=1 -q -f internal/db/roles.sql \

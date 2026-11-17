@@ -8,7 +8,6 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/apptest"
 	"github.com/riadafridishibly/quickstack/internal/auth"
-	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/tenant"
 	"github.com/riadafridishibly/quickstack/internal/testdb"
@@ -18,7 +17,7 @@ func TestOverview(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	ws := testdb.CreateWorkspace(t, s.Pool, "acme")
-	ana, c := authtest.Member(t, s.Pool, ws, "ana@example.com", auth.Member)
+	ana, c := testdb.Member(t, s.Pool, ws, "ana@example.com", auth.Member)
 	ctx := tenant.WithWorkspace(t.Context(), ws)
 	err := tenant.NewDB(s.Pool).Tx(ctx, func(tx tenant.Tx) error {
 		pid, err := tx.CreateProject(ctx, db.CreateProjectParams{WorkspaceID: tx.WorkspaceID, Name: "Launch", Status: "active"})

@@ -21,9 +21,9 @@ var ranges = []int{7, 30, 90}
 
 type handler struct{ tdb *tenant.DB }
 
-func Routes(mux *http.ServeMux, tdb *tenant.DB) {
+func Routes(r *auth.WorkspaceRouter, tdb *tenant.DB) {
 	h := handler{tdb: tdb}
-	mux.Handle("GET /w/{ws}", web.Handle(h.overview))
+	r.Handle("GET /w/{ws}", auth.AnyMember, h.overview)
 }
 
 type overviewView struct {
