@@ -122,3 +122,25 @@ func TestResolverSkippedWithoutImages(t *testing.T) {
 		t.Errorf("resolver called for a post with no images")
 	}
 }
+
+func TestDraftShowsProcessingImages(t *testing.T) {
+	var calls [][]string
+	src := "![Still going](/media/bzzy2345)\n\n![Broken](/media/fa772345)"
+	html, problems, pending, err := Draft(context.Background(), src, resolver(&calls))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pending {
+		t.Error("pending = false, want true")
+	}
+	if !strings.Contains(string(html), `viewBox="0 0 900 600"`) || !strings.Contains(string(html), `aria-label="Still going (processing)"`) {
+		t.Errorf("no placeholder for the processing image:\n%s", html)
+	}
+	if len(problems) != 1 || !strings.Contains(problems[0].Msg, "couldn’t be processed") {
+		t.Errorf("problems = %v, want only the failed image", problems)
+	}
+
+	if _, _, pending, _ := Draft(context.Background(), "![x](/media/ready234)", resolver(&calls)); pending {
+		t.Error("pending = true for a ready image")
+	}
+}

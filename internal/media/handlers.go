@@ -145,7 +145,7 @@ func (h handler) upload(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if wantsJSON(r) {
-		return writeJSON(w, http.StatusCreated, uploaded{Key: a.Key, URL: URL(a.Key), Markdown: markdown(a), Status: a.Status})
+		return writeJSON(w, http.StatusCreated, uploaded{Key: a.Key, URL: URL(a.Key), Markdown: Markdown(a.Key, a.Alt), Status: a.Status})
 	}
 	web.Redirect(w, r, assetURL(a.Key))
 	return nil
@@ -260,8 +260,8 @@ func (h handler) delete(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// markdown is how a post embeds the asset.
-func markdown(a db.Asset) string {
-	alt := strings.NewReplacer(`\`, `\\`, "[", `\[`, "]", `\]`).Replace(a.Alt)
-	return "![" + alt + "](" + URL(a.Key) + ")"
+// Markdown is how a post embeds the asset with key.
+func Markdown(key, alt string) string {
+	alt = strings.NewReplacer(`\`, `\\`, "[", `\[`, "]", `\]`).Replace(alt)
+	return "![" + alt + "](" + URL(key) + ")"
 }

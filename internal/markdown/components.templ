@@ -13,7 +13,17 @@ import (
 const sizes = "(min-width: 48rem) 45rem, 100vw"
 
 templ img(im image) {
-	if a := im.Asset; a != nil {
+	if a := im.Asset; a != nil && a.Status == media.Processing {
+		// The viewBox gives the placeholder the image's shape, which a style
+		// attribute can't under the CSP.
+		<span role="img" aria-label={ or(im.Alt, "Image") + " (processing)" } data-processing class="not-prose relative block">
+			<svg viewBox={ "0 0 " + strconv.Itoa(int(a.Width)) + " " + strconv.Itoa(int(a.Height)) } class="block h-auto w-full rounded-box bg-base-200" aria-hidden="true"></svg>
+			<span class="absolute inset-0 flex items-center justify-center gap-2 text-sm opacity-70">
+				<span class="loading loading-spinner loading-sm"></span>
+				Processing image…
+			</span>
+		</span>
+	} else if a != nil {
 		<img
 			src={ media.VariantURL(a.Key, a.Widths[len(a.Widths)-1]) }
 			srcset={ media.Srcset(*a) }

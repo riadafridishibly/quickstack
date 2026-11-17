@@ -3,6 +3,8 @@ package blog
 import (
 	"time"
 
+	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/media"
 	"github.com/riadafridishibly/quickstack/internal/platform"
 	"github.com/riadafridishibly/quickstack/internal/web"
 )
@@ -124,7 +126,7 @@ templ editPage(v editView) {
 		}
 		@web.Flash(v.Message)
 		@postFormEl(v)
-		<section id={ previewTarget } aria-live="polite" class="mt-6 empty:hidden"></section>
+		@imagePicker(v.Images)
 		if p := v.Stored; p != nil {
 			<details class={ web.PaddedCardClass, "mt-6 max-w-3xl" }>
 				<summary class="cursor-pointer font-medium text-error">Delete post</summary>
@@ -149,7 +151,7 @@ templ postFormEl(v editView) {
 		hx-post={ v.action() }
 		hx-swap="outerHTML"
 		novalidate
-		class={ web.PaddedCardClass, "max-w-3xl space-y-5" }
+		class={ web.PaddedCardClass, "max-w-3xl space-y-5 lg:has-[markdown-editor[data-mounted]]:max-w-none" }
 	>
 		if f.Conflict {
 			<p role="alert" class="alert alert-warning alert-soft">This post changed since you opened it. Saving again replaces those changes with yours; open the post in another tab to compare.</p>
@@ -171,9 +173,13 @@ templ postFormEl(v editView) {
 		}
 		<p class="-mt-3 text-sm opacity-70">Shown in the list of posts, in the feed and in link previews.</p>
 		@web.Field("Body", "body", f.Errors["body"]) {
-			<textarea { web.InputAttrs("body", f.Errors["body"])... } rows="20" class={ web.TextareaClass, "font-mono text-sm" }>{ f.Body }</textarea>
+			@bodyEditor(f, v.Message)
 		}
-		<p class="-mt-3 text-sm opacity-70">Markdown. Upload images in <a href="/admin/media" class={ web.LinkClass }>Media</a> and paste their Markdown here.</p>
+		<p class="-mt-3 text-sm opacity-70">
+			Markdown.
+			<span class="[.js_&]:hidden">Upload images below and paste their Markdown here.</span>
+			<span class="hidden [.js_&]:inline">Paste or drop images to upload them.</span>
+		</p>
 		<div class="grid gap-5 sm:grid-cols-2">
 			@web.Field("Cover image", "cover", f.Errors["cover"]) {
 				<input type="text" { web.InputAttrs("cover", f.Errors["cover"])... } value={ f.Cover } placeholder="/media/ab12cd34" class={ web.InputClass, "font-mono text-sm" }/>
@@ -201,7 +207,7 @@ templ postFormEl(v editView) {
 				hx-post={ previewPath }
 				hx-target={ "#" + previewTarget }
 				hx-swap="innerHTML"
-				class="btn btn-ghost"
+				class="btn btn-ghost [form:has(markdown-editor[data-mounted])_&]:hidden"
 			>Preview</button>
 			if v.Stored != nil {
 				<a href={ templ.SafeURL(adminPath) } class="btn btn-ghost">Cancel</a>
@@ -210,13 +216,91 @@ templ postFormEl(v editView) {
 	</form>
 }
 
+// bodyEditor is the post's body. The markdown-editor island
+// (frontend/src/islands/markdown-editor.tsx) replaces the textarea with an
+// editor that writes back to it, and shows the preview beside it. It is
+// preserved across swaps of the form, so a failed save keeps the editor's
+// state and uploads in flight. It repeats message in full screen, which
+// covers the page's.
+templ bodyEditor(f postForm, message string) {
+	<markdown-editor
+		id="body-editor"
+		hx-preserve
+		data-upload-url="/admin/media"
+		data-accept={ media.Accept }
+		data-save-button={ actionSave }
+		if message != "" {
+			data-message={ message }
+		}
+		class="block data-mounted:grid data-mounted:gap-4 lg:data-[view=split]:grid-cols-2 data-fullscreen:fixed data-fullscreen:inset-0 data-fullscreen:z-50 data-fullscreen:grid-rows-[auto_minmax(0,1fr)] data-fullscreen:bg-base-100 data-fullscreen:p-4 data-fullscreen:[--editor-max-height:none]"
+	>
+		<textarea
+			{ web.InputAttrs("body", f.Errors["body"])... }
+			rows="20"
+			hx-post={ previewPath }
+			hx-trigger="input delay:400ms"
+			hx-target={ "#" + previewTarget }
+			hx-swap="innerHTML"
+			class={ web.TextareaClass, "font-mono text-sm" }
+		>{ f.Body }</textarea>
+		<section id={ previewTarget } aria-live="polite" aria-label="Preview" class="mt-4 min-w-0 empty:hidden in-data-mounted:mt-0 in-data-[view=write]:hidden"></section>
+	</markdown-editor>
+}
+
 // previewPane is the rendered body, with the parts that were left out.
+// While an image is processing it asks again every two seconds.
 templ previewPane(v previewView) {
-	<div class={ web.PaddedCardClass, "max-w-3xl" }>
+	<div
+		if v.Pending {
+			hx-post={ previewPath }
+			hx-trigger="every 2s"
+			hx-target={ "#" + previewTarget }
+			hx-swap="innerHTML"
+		}
+		class="rounded-box border border-base-300 px-4 py-5 sm:p-6 lg:max-h-[var(--editor-max-height,70vh)] lg:overflow-y-auto in-data-fullscreen:h-full in-data-fullscreen:overflow-y-auto"
+	>
 		<h2 class="mb-4 text-sm font-semibold tracking-wide uppercase opacity-60">Preview</h2>
 		@problemList(v.Problems)
 		<div class="prose max-w-none">
 			@templ.Raw(string(v.HTML))
 		</div>
 	</div>
+}
+
+// imagePicker uploads images and lists the newest with their Markdown, for
+// writing a post without JavaScript. An upload opens in a new tab so the
+// post being written stays as it is.
+templ imagePicker(images []db.ListAssetsRow) {
+	<details class={ web.PaddedCardClass, "mt-6 max-w-3xl" }>
+		<summary class="cursor-pointer font-medium">Images</summary>
+		<form method="post" action="/admin/media" enctype="multipart/form-data" target="_blank" class="mt-4 flex flex-wrap items-end gap-3">
+			<div class="min-w-0 flex-1">
+				@web.Field("Upload an image", "image-file", "") {
+					<input type="file" id="image-file" name="file" accept={ media.Accept } required class="file-input w-full"/>
+				}
+			</div>
+			<button type="submit" class={ web.SecondaryButtonClass }>Upload</button>
+		</form>
+		<p class="mt-1.5 text-sm opacity-70">The image opens in a new tab, with its Markdown to copy.</p>
+		if len(images) > 0 {
+			<ul class="mt-4 divide-y divide-base-300">
+				for _, a := range images {
+					<li class="flex items-center gap-3 py-2">
+						if a.Status == media.Ready && len(a.Widths) > 0 {
+							<img src={ media.VariantURL(a.Key, a.Widths[0]) } alt="" loading="lazy" class="size-12 shrink-0 rounded object-cover bg-base-200"/>
+						} else {
+							<span class="size-12 shrink-0 rounded bg-base-200" aria-hidden="true"></span>
+						}
+						<input
+							type="text"
+							readonly
+							value={ media.Markdown(a.Key, a.Alt) }
+							aria-label={ "Markdown for image " + a.Key }
+							class={ web.InputClass, "min-w-0 flex-1 font-mono text-sm" }
+						/>
+					</li>
+				}
+			</ul>
+		}
+	</details>
 }
