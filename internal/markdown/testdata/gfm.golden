@@ -1,0 +1,22 @@
+<h2 class="lead" id="custom">A heading</h2>
+<h3 id="second-level">Second level</h3>
+<p>Text with <strong>bold</strong>, <em>emphasis</em>, <del>strike</del>, <code>code</code>, &ldquo;quotes&rdquo; &ndash; and dashes&hellip;</p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> done</li>
+<li><input disabled="" type="checkbox"> to do</li>
+</ul>
+<p>A bare link: <a href="https://example.com">https://example.com</a>, and <a href="https://example.com/a" title="Title">one with text</a>.</p>
+<dl>
+<dt>Term</dt>
+<dd>Its definition.</dd>
+</dl>
+<p>A footnote<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>.</p>
+<hr>
+<div class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1">
+<p>The note.&#160;<a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</div>

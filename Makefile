@@ -75,9 +75,10 @@ dev-go:
 seed: ## Fill the local database with sample accounts and workspaces: make seed [args="--reset"]
 	go run ./cmd/seed $(args)
 
-gen: ## Generate Go from .templ and .sql files
+gen: ## Generate Go from .templ and .sql files, and the code highlighting CSS
 	go tool templ generate
 	$(SQLC) generate
+	go run ./internal/markdown/chromacss frontend/src/chroma.css
 
 fmt: ## Format Go, templ, and TypeScript
 	go tool templ fmt .

@@ -190,6 +190,45 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]ListA
 	return items, nil
 }
 
+const listAssetsByKeys = `-- name: ListAssetsByKeys :many
+SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, alt, credit, created_by, created_at FROM assets WHERE key = ANY($1::text[])
+`
+
+func (q *Queries) ListAssetsByKeys(ctx context.Context, keys []string) ([]Asset, error) {
+	rows, err := q.db.Query(ctx, listAssetsByKeys, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Asset{}
+	for rows.Next() {
+		var i Asset
+		if err := rows.Scan(
+			&i.ID,
+			&i.Key,
+			&i.Status,
+			&i.Error,
+			&i.ContentType,
+			&i.Bytes,
+			&i.Sha256,
+			&i.Width,
+			&i.Height,
+			&i.Widths,
+			&i.Alt,
+			&i.Credit,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAssetFailed = `-- name: MarkAssetFailed :execrows
 UPDATE assets SET status = 'failed', error = $1 WHERE id = $2
 `

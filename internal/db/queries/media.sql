@@ -30,3 +30,6 @@ UPDATE assets SET alt = @alt, credit = @credit WHERE key = @key;
 
 -- name: DeleteAsset :one
 DELETE FROM assets WHERE key = @key RETURNING id;
+
+-- name: ListAssetsByKeys :many
+SELECT * FROM assets WHERE key = ANY(@keys::text[]);

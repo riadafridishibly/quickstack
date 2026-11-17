@@ -1,0 +1,133 @@
+package markdown
+
+import (
+	"strconv"
+
+	"github.com/riadafridishibly/quickstack/internal/media"
+)
+
+// The components a post renders with. Restyle them here; posts keep their
+// Markdown.
+
+// sizes fits the width of a post's text column.
+const sizes = "(min-width: 48rem) 45rem, 100vw"
+
+templ img(im image) {
+	if a := im.Asset; a != nil {
+		<img
+			src={ media.VariantURL(a.Key, a.Widths[len(a.Widths)-1]) }
+			srcset={ media.Srcset(*a) }
+			sizes={ sizes }
+			width={ strconv.Itoa(int(a.Width)) }
+			height={ strconv.Itoa(int(a.Height)) }
+			alt={ im.Alt }
+			loading="lazy"
+			decoding="async"
+			class="h-auto max-w-full"
+		/>
+	} else {
+		<img src={ im.Src } alt={ im.Alt } loading="lazy" decoding="async" class="h-auto max-w-full"/>
+	}
+}
+
+templ alert(kind string, inner templ.Component) {
+	switch kind {
+		case "note":
+			<div role="note" class="alert alert-info alert-soft my-6 block">
+				<p class="mt-0 mb-2 font-semibold">Note</p>
+				@alertBody(inner)
+			</div>
+		case "tip":
+			<div role="note" class="alert alert-success alert-soft my-6 block">
+				<p class="mt-0 mb-2 font-semibold">Tip</p>
+				@alertBody(inner)
+			</div>
+		case "important":
+			<div role="note" class="alert alert-soft my-6 block">
+				<p class="mt-0 mb-2 font-semibold">Important</p>
+				@alertBody(inner)
+			</div>
+		case "warning":
+			<div role="note" class="alert alert-warning alert-soft my-6 block">
+				<p class="mt-0 mb-2 font-semibold">Warning</p>
+				@alertBody(inner)
+			</div>
+		default:
+			<div role="note" class="alert alert-error alert-soft my-6 block">
+				<p class="mt-0 mb-2 font-semibold">Caution</p>
+				@alertBody(inner)
+			</div>
+	}
+}
+
+templ alertBody(inner templ.Component) {
+	<div class="[&>:first-child]:mt-0 [&>:last-child]:mb-0">
+		@inner
+	</div>
+}
+
+templ figure(im image, caption, credit string) {
+	<figure>
+		@img(im)
+		if caption != "" || credit != "" {
+			<figcaption>
+				if caption != "" {
+					{ caption }
+				}
+				if credit != "" {
+					<span class="opacity-80">{ credit }</span>
+				}
+			</figcaption>
+		}
+	</figure>
+}
+
+templ youtube(id, title string) {
+	<div class="not-prose my-6 aspect-video overflow-hidden rounded-box bg-base-200">
+		<iframe
+			src={ "https://www.youtube-nocookie.com/embed/" + id }
+			title={ title }
+			loading="lazy"
+			allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+			referrerpolicy="strict-origin-when-cross-origin"
+			allowfullscreen
+			class="size-full"
+		></iframe>
+	</div>
+}
+
+templ vimeo(id, title string) {
+	<div class="not-prose my-6 aspect-video overflow-hidden rounded-box bg-base-200">
+		<iframe
+			src={ "https://player.vimeo.com/video/" + id + "?dnt=1" }
+			title={ title }
+			loading="lazy"
+			allow="fullscreen; picture-in-picture; clipboard-write"
+			allowfullscreen
+			class="size-full"
+		></iframe>
+	</div>
+}
+
+templ details(summary string, inner templ.Component) {
+	<details class="collapse collapse-arrow my-6 border border-base-300 bg-base-100">
+		<summary class="collapse-title font-semibold">{ summary }</summary>
+		<div class="collapse-content [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+			@inner
+		</div>
+	</details>
+}
+
+// tabs are daisyUI radio tabs, so they need no JavaScript.
+templ tabs(inner templ.Component) {
+	<div role="tablist" class="tabs tabs-lift my-6">
+		@inner
+	</div>
+}
+
+templ tab(group, label string, first bool, inner templ.Component) {
+	<input type="radio" name={ group } role="tab" class="tab" aria-label={ label } checked?={ first }/>
+	<div role="tabpanel" class="tab-content border-base-300 bg-base-100 p-6 [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+		@inner
+	</div>
+}

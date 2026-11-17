@@ -1,0 +1,13 @@
+<h3 class="ok" id="heading">Heading</h3>
+<p>Inline tags and alert(1) go.</p>
+<p>Script, Data, Mixed,
+javascript:alert(1), <a href="mailto:a@example.com">Mail</a>, <a href="/blog/x">Relative</a> and <a href="#top">Fragment</a>.</p>
+
+<!-- problems
+line 3: HTML isn’t allowed in posts; use Markdown or a shortcode.
+line 5: HTML isn’t allowed in posts; use Markdown or a shortcode.
+line 9: The link to "javascript:alert(1)" was left out: links must be http, https, mailto or tel.
+line 9: The link to "data:text/html,x" was left out: links must be http, https, mailto or tel.
+line 9: The link to "JaVaScRiPt:alert(1)" was left out: links must be http, https, mailto or tel.
+line 10: The link to "javascript:alert(1)" was left out: links must be http, https, mailto or tel.
+-->
