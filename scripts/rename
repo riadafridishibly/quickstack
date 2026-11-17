@@ -18,10 +18,15 @@ if [[ ! $name =~ ^[a-z][a-z0-9]*$ ]]; then
 	echo "name must be lowercase letters and digits, starting with a letter" >&2
 	exit 2
 fi
+cd "$(dirname "$0")/.."
+if [ "$name" != quickstack ] && [ -e "cmd/$name" ]; then
+	echo "cmd/$name already exists" >&2
+	exit 2
+fi
+
 upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
 title="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
 
-cd "$(dirname "$0")/.."
 git ls-files --cached --others --exclude-standard -z |
 	while IFS= read -r -d '' f; do
 		case $f in pnpm-lock.yaml | scripts/rename) continue ;; esac
@@ -33,4 +38,7 @@ git ls-files --cached --others --exclude-standard -z |
 			s{quickstack(?!-vips)}{$ENV{NAME}}g;
 		' "$f"
 	done
+if [ "$name" != quickstack ]; then
+	mv cmd/quickstack "cmd/$name"
+fi
 echo "Renamed to $module ($name). Next: make setup db-setup check"

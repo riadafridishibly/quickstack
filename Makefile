@@ -132,7 +132,8 @@ check: gen check-deps ## Everything that must pass before work is done
 	pnpm run build
 
 check-deps:
-	@if go list -deps ./cmd/quickstack | grep -q '/internal/seed'; then \
+	@deps=$$(go list -deps ./cmd/quickstack) && \
+	if printf '%s\n' "$$deps" | grep -q '/internal/seed'; then \
 		echo "cmd/quickstack must not depend on internal/seed"; exit 1; fi
 
 e2e: build ## Playwright tests against the built app
