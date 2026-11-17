@@ -72,7 +72,9 @@ dev-go: export QUICKSTACK_DEV = 1
 dev-go:
 	go tool templ generate -watch -proxy=http://localhost:8360 -proxyport=7360 -open-browser=false -cmd="go run ./cmd/quickstack"
 
-seed: ## Fill the local database with sample accounts and workspaces: make seed [args="--reset"]
+# QUICKSTACK_DEV puts the sample images where `make dev` serves them from.
+seed: export QUICKSTACK_DEV = 1
+seed: ## Fill the local database with sample accounts, workspaces and posts: make seed [args="--reset"]
 	go run ./cmd/seed $(args)
 
 gen: ## Generate Go from .templ and .sql files, and the code highlighting CSS

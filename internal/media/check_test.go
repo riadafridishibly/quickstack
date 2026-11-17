@@ -99,7 +99,7 @@ func TestCheck(t *testing.T) {
 		{"gif", g.Bytes(), "image/gif", 30, 20},
 		{"webp", webp, "image/webp", 40, 30},
 	} {
-		up, err := checkData(tt.data)
+		up, err := CheckData(tt.data)
 		if err != nil {
 			t.Errorf("%s: %v", tt.name, err)
 			continue
@@ -121,7 +121,7 @@ func TestCheck(t *testing.T) {
 		{"ppm", []byte("P6\n1 1\n255\n\x00\x00\x00"), "isn’t an image"},
 		{"too many pixels", blackPNG(t, 8000, 7000), "56 megapixels"},
 	} {
-		_, err := checkData(tt.data)
+		_, err := CheckData(tt.data)
 		if rej, ok := errors.AsType[*Rejected](err); !ok || !strings.Contains(rej.Msg, tt.want) {
 			t.Errorf("%s: %v, want a rejection with %q", tt.name, err, tt.want)
 		}

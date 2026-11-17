@@ -98,7 +98,7 @@ templ youtube(id, title string) {
 			src={ "https://www.youtube-nocookie.com/embed/" + id }
 			title={ title }
 			loading="lazy"
-			allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+			allow="accelerometer; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share"
 			referrerpolicy="strict-origin-when-cross-origin"
 			allowfullscreen
 			class="size-full"
@@ -112,7 +112,7 @@ templ vimeo(id, title string) {
 			src={ "https://player.vimeo.com/video/" + id + "?dnt=1" }
 			title={ title }
 			loading="lazy"
-			allow="fullscreen; picture-in-picture; clipboard-write"
+			allow="clipboard-write; encrypted-media; fullscreen; picture-in-picture"
 			allowfullscreen
 			class="size-full"
 		></iframe>

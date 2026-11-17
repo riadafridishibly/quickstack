@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Quickstack is a template for server-rendered Go web apps with several dashboards: copy it, rename it with `scripts/rename`, delete the samples you don't need. One binary holds the public site, sign-in, and three dashboards: a workspace's (`/w/{ws}`), a person's account (`/account`), and the platform admin (`/admin`). Pages are server-rendered with templ, htmx handles server round-trips, and Preact islands handle client-side state. The frontend is embedded in the binary. PostgreSQL 18 holds the data, with row-level security per workspace, and River runs background jobs. Node runs only at build time.
+Quickstack is a template for server-rendered Go web apps with several dashboards: copy it, rename it with `scripts/rename`, delete the samples you don't need. One binary holds the public site and its blog, sign-in, and three dashboards: a workspace's (`/w/{ws}`), a person's account (`/account`), and the platform admin (`/admin`). Pages are server-rendered with templ, htmx handles server round-trips, and Preact islands handle client-side state. The frontend is embedded in the binary. PostgreSQL 18 holds the data, with row-level security per workspace, and River runs background jobs. Node runs only at build time.
 
 Design notes and decisions live in the issue tracker, not in the repo. Keep code comments to what is necessary.
 
@@ -10,8 +10,8 @@ Design notes and decisions live in the issue tracker, not in the repo. Keep code
 - `make db-setup`: create the roles and the `quickstack` database (once). `make db-up` starts Postgres in Docker instead.
 - `make dev`: Vite + Go with live reload. Open http://localhost:7360 (the templ proxy), not :8360. Mail goes to http://localhost:7360/dev/mail.
 - `make s3-up`: SeaweedFS in Docker, to try the S3 blob store. Its tests run when `QUICKSTACK_TEST_S3_URL` is set (see `.env.example`).
-- `make seed [args="--reset"]`: sample accounts (`owner@`, `manager@`, `member@`, `viewer@`, `admin@`, `support@seed.test`, password `seed-password`), two workspaces and 90 days of tasks. It refuses a database that isn't on this machine unless given `--allow-remote`.
-- `make gen`: regenerate Go from `.templ` and `.sql` files. Run it after editing either.
+- `make seed [args="--reset"]`: sample accounts (`owner@`, `manager@`, `member@`, `viewer@`, `admin@`, `support@`, `editor@seed.test`, password `seed-password`), two workspaces, 90 days of tasks, and four blog posts with images (two published, one scheduled for next week, one draft). The images go to `./tmp/media`, where `make dev` serves them. It refuses a database that isn't on this machine unless given `--allow-remote`.
+- `make gen`: regenerate Go from `.templ` and `.sql` files, and `frontend/src/chroma.css` for code highlighting. Run it after editing either.
 - `make migration name=<name>`: new timestamped migration file.
 - `make check`: gen, the dependency check, templ fmt, go vet, golangci-lint, go test, tsc, Biome, and the Vite build. **Work is done only when this passes.** The pre-push hook runs it.
 - `make e2e`: Playwright against the built app. Run it when you change anything a browser does (htmx attributes, islands, forms).
@@ -38,6 +38,8 @@ internal/platform/    the staff dashboard at /admin: accounts, workspaces, audit
 internal/projects/    SAMPLE, the reference feature: list with live search, forms, htmx board, task-board island
 internal/insights/    SAMPLE: a workspace's overview with stat tiles and charts
 internal/public/      SAMPLE: landing page and public roadmaps, with their own layout and stylesheet
+internal/blog/        the site's blog: writing at /admin/blog, reading at /blog, tags, the Atom feed and the sitemap
+internal/markdown/    Markdown to HTML for posts: GFM, alerts, images from Media, shortcodes drawn by components.templ
 internal/chart/       line and column charts drawn as SVG on the server, with a table of the values
 internal/mail/        Sender (SMTP, log, dev outbox), the send job, Enqueue
 internal/blob/        Store: files by key on local disk (file://) or in an S3-compatible bucket (s3://)
@@ -45,7 +47,7 @@ internal/media/       image uploads: Check, Create, Delete, the libvips job, /me
 internal/jobs/        River client
 internal/web/         Handle/Render/htmx helpers, middleware, Document/Layout/ShellLayout, form components, embedded dist/
 internal/slug/        URL slugs
-internal/seed/        what cmd/seed writes, through the app's own write functions
+internal/seed/        what cmd/seed writes, through the app's own write functions; sample images and post bodies in testdata/
 internal/testdb/      per-test Postgres databases
 internal/apptest/     the whole app against a test database, for handler tests; Mail and Link read queued mail
 frontend/src/         main.ts (htmx config, island loader), app.css (dashboards), public.css (public site), islands/
@@ -88,7 +90,25 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 - Record changes people should be able to trace with `RecordAudit` in the same transaction; `/admin/audit` lists them.
 - Send mail with `mail.Enqueue(ctx, jc, tx, msg)` inside the transaction, so it goes out only if the change commits. Links in mail start with `cfg.PublicURL`.
 - Map `pgx.ErrNoRows` to `web.ErrNotFound` (`web.NotFoundIfNoRows`).
-- Images: `media.Check(r)` before the transaction (a `*media.Rejected` error is a 422 with its message), then `media.Create` inside it, and `media.Discard` if it doesn't commit. Link to an asset by its key (`media.URL`), never its id. Only the JPEG, PNG, WebP, GIF and HEIF loaders of libvips may run; the original is never served.
+- Images go through `internal/media` (see Media).
+
+## Media
+
+Images uploaded at `/admin/media` (or pasted into the post editor), for the blog or any other feature.
+
+- Files live in a `blob.Store` named by `QUICKSTACK_BLOB_URL`: `file:///dir`, `file://./relative/dir`, or `s3://key:secret@bucket/prefix?endpoint=host:port&region=r&insecure=1` for any S3-compatible bucket. In development it is `./tmp/media`; `make s3-up` runs SeaweedFS to try a bucket.
+- To accept an upload: `media.Check(r)` before the transaction (a `*media.Rejected` error is a 422 with its message; `media.CheckData` takes bytes you already have), then `media.Create(ctx, tx, store, jc, userID, up)` inside it, and `media.Discard` if it doesn't commit. `media.Delete` removes an asset and queues the deletion of its files.
+- `Create` stores the original and queues `media_process` on the `media` queue. The job re-encodes it with libvips into WebP at `media.Widths` (never wider than the original) and an `og.jpg` social card, then marks the asset ready. `media.Process` does the same work directly, as the seed does. Only the JPEG, PNG, WebP, GIF and HEIF loaders of libvips may run.
+- An asset is named by its 8-character key, never its id. `media.URL(key)` (`/media/{key}`) is the address Markdown uses; `/media/{key}/{640.webp|og.jpg}` serves the files with a year-long cache, since a key's files never change. The original is never served: it keeps metadata such as where a photo was taken.
+
+## Blog
+
+A site-wide blog, written at `/admin/blog` by platform roles with `ManageBlog` (superadmin and editor) and read at `/blog`.
+
+- **Posts** are a platform table, not a workspace one. A post is live when `status = 'published'` and `published_at <= now()`, so a future time schedules it without a job; public pages cache for a minute. Write posts through `blog.Create` or the admin handlers, which share `save`: it validates, checks the cover and the slug, records which assets the body shows in `post_media`, keeps a redirect when a published post's slug changes, and writes the audit log.
+- **Markdown**: `markdown.Render(ctx, src, q.ListAssetsByKeys)` returns the HTML and a list of `Problem`s, the parts it left out (an unknown shortcode, an image that isn't ready). `markdown.Draft` shows images still processing as placeholders, for the preview. It is goldmark with GFM, footnotes, definition lists, heading IDs and GitHub-style alerts (`> [!NOTE]`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`). Raw HTML is dropped. `![alt](/media/key)` becomes an `<img>` with a `srcset` of the variants. Code is highlighted with chroma classes, styled by `frontend/src/chroma.css`.
+- **Shortcodes** are Hugo-style and sit on a line of their own: `figure`, `youtube`, `vimeo`, `details`, and `tabs` holding `tab`s. Those that wrap content close with `{{< /name >}}`, and the content between is Markdown. To add one, add an entry to `shortcodes` in `internal/markdown/shortcode.go` (its params, which are required, a `check` for their values, whether it takes inner content) and a component in `components.templ`, then cover it in `testdata/shortcodes.md` and its golden file. Restyle a shortcode by changing its component; posts keep their Markdown.
+- **The editor** is `<markdown-editor>` (`frontend/src/islands/markdown-editor.tsx`), registered with `defineEnhancement` around the server-rendered textarea, which stays in the form so the post saves without JS. It runs CodeMirror in a shadow root (see Islands), sets the textarea's value, and fires `input`, so htmx posts the body to `/admin/blog/preview` and swaps the rendered preview and its problems in. Pasted and dropped images are posted to `/admin/media` with `Accept: application/json`, and the answer's Markdown replaces an "Uploading…" placeholder.
 
 ## Handlers
 
