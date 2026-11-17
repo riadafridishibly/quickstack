@@ -144,6 +144,27 @@ test("the editor switches views and goes full screen", async ({ page }) => {
   await expect(preview).toBeHidden();
 });
 
+// The players run in their iframes and log to the same console, which the
+// fixture checks. With no network the frames stay empty and this passes.
+test("a post with video embeds loads without console errors", async ({ page }) => {
+  await signUpEditor(page, "Kit", "kit@example.com");
+  await page.goto("/admin/blog/new");
+  await page.getByLabel("Title").fill("Videos");
+  await expect(page.locator("markdown-editor[data-mounted]")).toBeAttached();
+  await page.getByRole("textbox", { name: "Body" }).click();
+  await page.keyboard.insertText(
+    '{{< youtube id="f6kdp27TYZs" title="A talk" >}}\n\n{{< vimeo id="76979871" title="A demo" >}}',
+  );
+  await page.getByRole("button", { name: "Publish" }).click();
+  await expect(page).toHaveURL(/\/admin\/blog\/\d+\?done=published$/);
+
+  await page.goto("/blog/videos");
+  for (const title of ["A talk", "A demo"]) {
+    await page.locator(`iframe[title="${title}"]`).scrollIntoViewIfNeeded();
+  }
+  await page.waitForLoadState("networkidle");
+});
+
 test.describe("without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
 
