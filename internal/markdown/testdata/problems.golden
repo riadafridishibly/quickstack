@@ -1,0 +1,16 @@
+<div role="tablist" class="tabs tabs-lift my-6"><input type="radio" name="tabs-1" role="tab" class="tab" aria-label="One" checked><div role="tabpanel" class="tab-content border-base-300 bg-base-100 p-6 [&>:first-child]:mt-0 [&>:last-child]:mb-0"><p>One.</p>
+</div></div><details class="collapse collapse-arrow my-6 border border-base-300 bg-base-100"><summary class="collapse-title font-semibold">Open</summary><div class="collapse-content [&>:first-child]:mt-0 [&>:last-child]:mb-0"><p>Never closed.</p>
+</div></details>
+<!-- problems
+line 1: There is no shortcode {{< nope >}}.
+line 3: {{< youtube >}}: id must be a YouTube video ID, the 11 characters after v= in its URL.
+line 5: {{< youtube >}} needs id="…".
+line 7: {{< vimeo >}} has no parameter "color".
+line 9: {{< details >}}: name each value, as in summary="…".
+line 13: {{< /tabs >}} closes nothing.
+line 15: {{< tab >}} goes inside {{< tabs >}}.
+line 20: Inside {{< tabs >}}, put content in a {{< tab label="…" >}}.
+line 26: The image "https://example.com/x.png" was left out: upload it to Media and use its Markdown.
+line 28: {{< youtube >}}: a quoted value has no closing quote.
+line 30: {{< details >}} has no closing {{< /details >}}, so it runs to the end.
+-->

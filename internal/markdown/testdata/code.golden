@@ -1,0 +1,4 @@
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;hi&#34;</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="w">
+</span></span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl">plain &lt;text&gt;
+</span></span></code></pre><pre class="chroma"><code><span class="line"><span class="cl">indented code
+</span></span></code></pre>

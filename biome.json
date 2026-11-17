@@ -1,7 +1,15 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["frontend/src/**", "e2e/**", "!e2e/.auth", "*.ts", "*.json", "!pnpm-lock.yaml"]
+    "includes": [
+      "frontend/src/**",
+      "!frontend/src/chroma.css",
+      "e2e/**",
+      "!e2e/.auth",
+      "*.ts",
+      "*.json",
+      "!pnpm-lock.yaml"
+    ]
   },
   "formatter": {
     "indentStyle": "space",

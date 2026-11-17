@@ -82,6 +82,8 @@ func SecureHeaders(viteURL string) func(http.Handler) http.Handler {
 		"connect-src " + connect,
 		"img-src 'self' data:",
 		"font-src " + font,
+		// Post embeds: the youtube and vimeo shortcodes.
+		"frame-src https://www.youtube-nocookie.com https://player.vimeo.com",
 		"object-src 'none'",
 		"base-uri 'self'",
 		"form-action 'self'",

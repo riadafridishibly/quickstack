@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
@@ -79,6 +81,20 @@ func URL(key string) string { return "/media/" + key }
 
 // FileURL is the path of one of an asset's files, such as "640.webp".
 func FileURL(key, file string) string { return "/media/" + key + "/" + file }
+
+// VariantURL is the path of the WebP variant w wide.
+func VariantURL(key string, w int32) string {
+	return FileURL(key, strconv.Itoa(int(w))+".webp")
+}
+
+// Srcset lists a ready asset's variants for an <img srcset>.
+func Srcset(a db.Asset) string {
+	parts := make([]string, len(a.Widths))
+	for i, w := range a.Widths {
+		parts[i] = VariantURL(a.Key, w) + " " + strconv.Itoa(int(w)) + "w"
+	}
+	return strings.Join(parts, ", ")
+}
 
 func originalKey(a db.Asset) string { return a.Key + "/original." + extOf(a.ContentType) }
 

@@ -12,18 +12,6 @@ import (
 
 const accept = "image/jpeg,image/png,image/webp,image/gif,image/heic,.heic"
 
-func variant(key string, w int32) string {
-	return FileURL(key, strconv.Itoa(int(w))+".webp")
-}
-
-func srcset(a db.Asset) string {
-	parts := make([]string, len(a.Widths))
-	for i, w := range a.Widths {
-		parts[i] = variant(a.Key, w) + " " + strconv.Itoa(int(w)) + "w"
-	}
-	return strings.Join(parts, ", ")
-}
-
 func size(bytes int64) string {
 	switch {
 	case bytes >= 1<<20:
@@ -88,7 +76,7 @@ templ assetList(v listView) {
 								<td>
 									<a href={ templ.SafeURL(assetURL(a.Key)) } class="flex items-center gap-3">
 										if a.Status == Ready && len(a.Widths) > 0 {
-											<img src={ variant(a.Key, a.Widths[0]) } alt="" loading="lazy" class="size-14 shrink-0 rounded object-cover bg-base-200"/>
+											<img src={ VariantURL(a.Key, a.Widths[0]) } alt="" loading="lazy" class="size-14 shrink-0 rounded object-cover bg-base-200"/>
 										} else {
 											<span class="size-14 shrink-0 rounded bg-base-200" aria-hidden="true"></span>
 										}
@@ -187,8 +175,8 @@ templ preview(a db.Asset) {
 		switch a.Status {
 			case Ready:
 				<img
-					src={ variant(a.Key, a.Widths[len(a.Widths)-1]) }
-					srcset={ srcset(a) }
+					src={ VariantURL(a.Key, a.Widths[len(a.Widths)-1]) }
+					srcset={ Srcset(a) }
 					sizes="(min-width: 1024px) 40vw, 100vw"
 					width={ strconv.Itoa(int(a.Width)) }
 					height={ strconv.Itoa(int(a.Height)) }
