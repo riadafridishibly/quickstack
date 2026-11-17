@@ -1,6 +1,7 @@
 // Package public is the site anyone can see: the landing page and each
-// public workspace's roadmap. It has its own layout and stylesheet, as a
-// storefront or a marketing site would.
+// public workspace's roadmap. Its Layout and stylesheet, which the blog
+// shares, give the site its own look, as a storefront or a marketing site
+// would have.
 package public
 
 import (

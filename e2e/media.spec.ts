@@ -17,6 +17,8 @@ test("an editor uploads an image and sees it once processed", async ({ page }) =
   execFileSync("./bin/quickstack", ["set-platform-role", "eve@example.com", "editor"]);
 
   await page.goto("/admin");
+  await expect(page).toHaveURL(/\/admin\/blog$/);
+  await page.getByRole("link", { name: "Media", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/media$/);
 
   const file = page.getByLabel("Upload an image");

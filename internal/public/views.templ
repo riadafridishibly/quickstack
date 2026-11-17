@@ -6,13 +6,16 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/web"
 )
 
-templ layout(title string) {
-	@web.Document(title, web.PublicStyle) {
+// Layout is the public site's shell: the landing page, roadmaps and the
+// blog render in it.
+templ Layout(title string, m web.Meta) {
+	@web.Document(title, web.PublicStyle, m) {
 		<div class="flex min-h-screen flex-col bg-base-100">
 			<header class="border-b border-base-300">
 				<nav class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4">
 					<a href="/" class="font-display text-xl font-semibold tracking-tight">Quickstack</a>
 					<div class="flex items-center gap-2">
+						<a href="/blog" class="btn btn-ghost btn-sm">Blog</a>
 						if auth.From(ctx) != nil {
 							<a href={ templ.SafeURL(auth.HomePath) } class="btn btn-primary btn-sm">Your workspaces</a>
 						} else {
@@ -33,7 +36,7 @@ templ layout(title string) {
 }
 
 templ landingPage() {
-	@layout("Plan the work, show the progress") {
+	@Layout("Plan the work, show the progress", web.Meta{Description: "Workspaces with roles, a task board, charts of what got done, and a public roadmap."}) {
 		<section class="mx-auto max-w-5xl px-4 py-20 sm:py-28">
 			<p class="text-sm font-semibold tracking-wide text-primary uppercase">Projects and tasks for small teams</p>
 			<h1 class="font-display mt-4 max-w-3xl text-4xl leading-tight font-semibold tracking-tight sm:text-6xl">Plan the work. Show the progress.</h1>
@@ -65,7 +68,7 @@ templ feature(title, body string) {
 }
 
 templ roadmapPage(name string, projects []*roadmapProject) {
-	@layout(name + " roadmap") {
+	@Layout(name+" roadmap", web.Meta{}) {
 		<section class="mx-auto max-w-5xl px-4 py-12">
 			<p class="text-sm font-semibold tracking-wide text-primary uppercase">Roadmap</p>
 			<h1 class="font-display mt-2 text-4xl font-semibold tracking-tight">{ name }</h1>

@@ -1,0 +1,222 @@
+package blog
+
+import (
+	"time"
+
+	"github.com/riadafridishibly/quickstack/internal/platform"
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+templ listPage(v listView) {
+	@platform.Layout("Blog") {
+		@web.PageHeader("Blog") {
+			<a href={ templ.SafeURL(adminPath + "/new") } class={ web.ButtonClass }>New post</a>
+		}
+		@web.Flash(v.Message)
+		<form
+			method="get"
+			action={ templ.SafeURL(adminPath) }
+			hx-get={ adminPath }
+			hx-trigger="input changed delay:250ms from:input[name=q], change from:select, submit"
+			hx-target={ "#" + listTarget }
+			hx-swap="outerHTML"
+			hx-push-url="true"
+			role="search"
+			class="mb-4 flex flex-wrap items-center gap-2"
+		>
+			<label class="input min-w-0 flex-1">
+				<span class="sr-only">Search posts</span>
+				<input type="search" name="q" value={ v.Query } placeholder="Search by title" autocomplete="off"/>
+			</label>
+			<select name="state" aria-label="State" class="select w-40">
+				<option value="" selected?={ v.State == "" }>All posts</option>
+				for _, s := range []string{stateDraft, stateScheduled, statePublished} {
+					<option value={ s } selected?={ v.State == s }>{ stateLabel(s) }</option>
+				}
+			</select>
+			<button type="submit" class={ web.SecondaryButtonClass, "[.js_&]:hidden" }>Search</button>
+		</form>
+		@postList(v)
+	}
+}
+
+templ postList(v listView) {
+	<div id={ listTarget } class="transition-opacity [&.htmx-request]:opacity-60">
+		if len(v.Rows) == 0 {
+			if v.Query != "" || v.State != "" {
+				@web.Empty("No posts match", "Try another search, or look in all posts.")
+			} else {
+				@web.Empty("No posts yet", "Posts you write here appear on the blog once you publish them.")
+			}
+		} else {
+			@web.PageCount(v.Page, "posts")
+			<div class={ web.CardClass, "overflow-x-auto" }>
+				<table class="table">
+					<thead>
+						<tr>
+							<th scope="col">Title</th>
+							<th scope="col" class="max-sm:hidden">Published</th>
+							<th scope="col" class="max-sm:hidden">Updated</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, p := range v.Rows {
+							<tr>
+								<td>
+									<a href={ templ.SafeURL(editURL(p.ID)) } class={ web.LinkClass }>{ p.Title }</a>
+									<span class="ml-2">
+										@stateBadge(state(p.Status, p.PublishedAt, v.Now))
+									</span>
+									<p class="text-sm opacity-60">/blog/{ p.Slug }</p>
+								</td>
+								<td class="max-sm:hidden text-sm opacity-70">
+									if p.PublishedAt != nil {
+										{ p.PublishedAt.UTC().Format("Jan 2, 2006 15:04") }
+									} else {
+										–
+									}
+								</td>
+								<td class="max-sm:hidden text-sm opacity-70">
+									{ p.UpdatedAt.Format("Jan 2, 2006") }
+									if p.AuthorName != nil {
+										<span class="block">{ *p.AuthorName }</span>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+			@web.Pager(v.Page, listTarget)
+		}
+	</div>
+}
+
+templ stateBadge(s string) {
+	switch s {
+		case stateDraft:
+			<span class="badge badge-soft badge-sm">Draft</span>
+		case stateScheduled:
+			<span class="badge badge-soft badge-info badge-sm">Scheduled</span>
+		case statePublished:
+			<span class="badge badge-soft badge-success badge-sm">Published</span>
+	}
+}
+
+templ editPage(v editView) {
+	{{ title := "New post" }}
+	if v.Stored != nil {
+		{{ title = v.Stored.Title }}
+	}
+	@platform.Layout(title) {
+		<nav aria-label="Breadcrumb" class="mb-1 text-sm opacity-70">
+			<a href={ templ.SafeURL(adminPath) } class="link-hover">Blog</a>
+		</nav>
+		@web.PageHeader(title) {
+			if p := v.Stored; p != nil {
+				@stateBadge(state(p.Status, p.PublishedAt, time.Now()))
+				if live(*p, time.Now()) {
+					<a href={ templ.SafeURL(postURL(p.Slug)) } class={ web.SecondaryButtonClass }>View post</a>
+				} else {
+					<a href={ templ.SafeURL(editURL(p.ID) + "/preview") } class={ web.SecondaryButtonClass }>Preview</a>
+				}
+			}
+		}
+		@web.Flash(v.Message)
+		@postFormEl(v)
+		<section id={ previewTarget } aria-live="polite" class="mt-6 empty:hidden"></section>
+		if p := v.Stored; p != nil {
+			<details class={ web.PaddedCardClass, "mt-6 max-w-3xl" }>
+				<summary class="cursor-pointer font-medium text-error">Delete post</summary>
+				<p class="mt-3 text-sm opacity-80">This deletes the post and the links to it stop working. It can’t be undone; unpublish the post to hide it instead.</p>
+				<form method="post" action={ templ.SafeURL(editURL(p.ID) + "/delete") } class="mt-4">
+					<button type="submit" class="btn btn-error">Delete post</button>
+				</form>
+			</details>
+		}
+	}
+}
+
+// postFormEl is the post form. Which buttons it has depends on the post as
+// stored, not on what the form holds.
+templ postFormEl(v editView) {
+	{{ f := v.Form }}
+	{{ published := v.Stored != nil && v.Stored.Status == Published }}
+	<form
+		id={ formTarget }
+		method="post"
+		action={ templ.SafeURL(v.action()) }
+		hx-post={ v.action() }
+		hx-swap="outerHTML"
+		novalidate
+		class={ web.PaddedCardClass, "max-w-3xl space-y-5" }
+	>
+		if f.Conflict {
+			<p role="alert" class="alert alert-warning alert-soft">This post changed since you opened it. Saving again replaces those changes with yours; open the post in another tab to compare.</p>
+		} else if len(f.Errors) > 0 {
+			<p role="alert" class="alert alert-error alert-soft">The post wasn’t saved. Fix the fields marked below.</p>
+		}
+		if v.Stored != nil {
+			<input type="hidden" name="updated_at" value={ f.UpdatedAt }/>
+		}
+		@web.Field("Title", "title", f.Errors["title"]) {
+			<input type="text" { web.InputAttrs("title", f.Errors["title"])... } value={ f.Title } required maxlength="200" class={ web.InputClass }/>
+		}
+		@web.Field("Slug", "slug", f.Errors["slug"]) {
+			<input type="text" { web.InputAttrs("slug", f.Errors["slug"])... } value={ f.Slug } maxlength="80" class={ web.InputClass, "font-mono text-sm" }/>
+		}
+		<p class="-mt-3 text-sm opacity-70">The post’s address: /blog/slug. Leave it empty to make one from the title. When a published post’s slug changes, the old address redirects to the new one.</p>
+		@web.Field("Summary", "summary", f.Errors["summary"]) {
+			<textarea { web.InputAttrs("summary", f.Errors["summary"])... } rows="2" maxlength="500" class={ web.TextareaClass }>{ f.Summary }</textarea>
+		}
+		<p class="-mt-3 text-sm opacity-70">Shown in the list of posts, in the feed and in link previews.</p>
+		@web.Field("Body", "body", f.Errors["body"]) {
+			<textarea { web.InputAttrs("body", f.Errors["body"])... } rows="20" class={ web.TextareaClass, "font-mono text-sm" }>{ f.Body }</textarea>
+		}
+		<p class="-mt-3 text-sm opacity-70">Markdown. Upload images in <a href="/admin/media" class={ web.LinkClass }>Media</a> and paste their Markdown here.</p>
+		<div class="grid gap-5 sm:grid-cols-2">
+			@web.Field("Cover image", "cover", f.Errors["cover"]) {
+				<input type="text" { web.InputAttrs("cover", f.Errors["cover"])... } value={ f.Cover } placeholder="/media/ab12cd34" class={ web.InputClass, "font-mono text-sm" }/>
+			}
+			@web.Field("Tags", "tags", f.Errors["tags"]) {
+				<input type="text" { web.InputAttrs("tags", f.Errors["tags"])... } value={ f.Tags } placeholder="releases, postgres" class={ web.InputClass }/>
+			}
+		</div>
+		@web.Field("Publish at (UTC)", "published_at", f.Errors["published_at"]) {
+			<input type="datetime-local" { web.InputAttrs("published_at", f.Errors["published_at"])... } value={ f.PublishAt } class={ web.InputClass, "sm:w-64" }/>
+		}
+		<p class="-mt-3 text-sm opacity-70">Leave it empty to publish now. A later time schedules the post.</p>
+		<div class="flex flex-wrap gap-2">
+			if published {
+				<button type="submit" name="action" value={ actionSave } class={ web.ButtonClass }>Save</button>
+				<button type="submit" name="action" value={ actionUnpublish } class={ web.SecondaryButtonClass }>Unpublish</button>
+			} else {
+				<button type="submit" name="action" value={ actionSave } class={ web.SecondaryButtonClass }>Save draft</button>
+				<button type="submit" name="action" value={ actionPublish } class={ web.ButtonClass }>Publish</button>
+			}
+			<button
+				type="submit"
+				formaction={ templ.SafeURL(previewPath) }
+				formtarget="_blank"
+				hx-post={ previewPath }
+				hx-target={ "#" + previewTarget }
+				hx-swap="innerHTML"
+				class="btn btn-ghost"
+			>Preview</button>
+			if v.Stored != nil {
+				<a href={ templ.SafeURL(adminPath) } class="btn btn-ghost">Cancel</a>
+			}
+		</div>
+	</form>
+}
+
+// previewPane is the rendered body, with the parts that were left out.
+templ previewPane(v previewView) {
+	<div class={ web.PaddedCardClass, "max-w-3xl" }>
+		<h2 class="mb-4 text-sm font-semibold tracking-wide uppercase opacity-60">Preview</h2>
+		@problemList(v.Problems)
+		<div class="prose max-w-none">
+			@templ.Raw(string(v.HTML))
+		</div>
+	</div>
+}

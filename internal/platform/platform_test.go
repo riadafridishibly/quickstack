@@ -29,7 +29,7 @@ func TestPlatformRoles(t *testing.T) {
 	for _, p := range []string{"/admin", "/admin/accounts", "/admin/workspaces", "/admin/audit"} {
 		apptest.Status(t, s.Get(p, support), http.StatusOK)
 	}
-	apptest.Redirect(t, s.Get("/admin", editor), "/admin/media")
+	apptest.Redirect(t, s.Get("/admin", editor), "/admin/blog")
 	for _, p := range []string{"/admin/accounts", fmt.Sprintf("/admin/accounts/%d", supportID), "/admin/workspaces", "/admin/audit"} {
 		apptest.Status(t, s.Get(p, editor), http.StatusForbidden)
 	}

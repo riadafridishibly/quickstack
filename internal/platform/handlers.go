@@ -1,7 +1,8 @@
 // Package platform is the dashboard for the people who run the service, at
-// /admin: accounts, workspaces and the audit log. It reads platform tables
-// only. Workspace data stays behind row-level security, so staff see that a
-// workspace exists and who is in it, not its projects.
+// /admin: accounts, workspaces and the audit log, with the blog and media
+// adding their own sections. It reads platform tables only. Workspace data
+// stays behind row-level security, so staff see that a workspace exists and
+// who is in it, not its projects.
 package platform
 
 import (
@@ -55,6 +56,7 @@ var sections = []section{
 	{web.NavItem{Label: "Accounts", Href: "/admin/accounts"}, auth.ViewAccounts},
 	{web.NavItem{Label: "Workspaces", Href: "/admin/workspaces"}, auth.ViewAccounts},
 	{web.NavItem{Label: "Audit log", Href: "/admin/audit"}, auth.ViewAccounts},
+	{web.NavItem{Label: "Blog", Href: "/admin/blog"}, auth.ManageBlog},
 	{web.NavItem{Label: "Media", Href: "/admin/media"}, auth.ManageBlog},
 }
 
