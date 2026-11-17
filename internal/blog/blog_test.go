@@ -326,6 +326,39 @@ func TestFeedAndSitemap(t *testing.T) {
 	}
 }
 
+func TestPreviewWaitsForImages(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	editor := staff(t, s, "eve@example.com", auth.Editor)
+	if _, err := db.New(s.Pool).CreateAsset(t.Context(), db.CreateAssetParams{Key: "wayt2345", ContentType: "image/png", Sha256: []byte{0}, Width: 40, Height: 30}); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"body": {"![A cat](/media/wayt2345)"}}
+	preview := func() string {
+		t.Helper()
+		w := s.Do(apptest.Req{Path: "/admin/blog/preview", Cookie: editor, Form: form, Target: "post-preview"})
+		apptest.Status(t, w, http.StatusOK)
+		return w.Body.String()
+	}
+	if b := preview(); !strings.Contains(b, `viewBox="0 0 40 30"`) || !strings.Contains(b, `hx-trigger="every 2s"`) || strings.Contains(b, "still being processed") {
+		t.Errorf("preview of a processing image:\n%s", b)
+	}
+	if _, err := s.Pool.Exec(t.Context(), "UPDATE assets SET status = 'ready', widths = '{40}' WHERE key = 'wayt2345'"); err != nil {
+		t.Fatal(err)
+	}
+	if b := preview(); !strings.Contains(b, "/media/wayt2345/40.webp") || strings.Contains(b, "hx-trigger") {
+		t.Errorf("preview of a ready image:\n%s", b)
+	}
+
+	// Without JavaScript, the edit page lists the newest images with their
+	// Markdown.
+	w := s.Get("/admin/blog/new", editor)
+	apptest.Status(t, w, http.StatusOK)
+	if b := w.Body.String(); !strings.Contains(b, `value="![](/media/wayt2345)"`) {
+		t.Errorf("new post page has no Markdown for the image:\n%s", b)
+	}
+}
+
 func TestPostMedia(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)

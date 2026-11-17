@@ -66,19 +66,32 @@ func init() {
 // shortcode or an image that isn't ready, is reported as a Problem. The
 // error is only from assets.
 func Render(ctx context.Context, src string, assets Resolver) (template.HTML, []Problem, error) {
+	html, problems, _, err := render(ctx, src, assets, false)
+	return html, problems, err
+}
+
+// Draft renders src as Render does, except that an image still being
+// processed shows as a placeholder of its size instead of being left out.
+// pending reports whether any did.
+func Draft(ctx context.Context, src string, assets Resolver) (html template.HTML, problems []Problem, pending bool, err error) {
+	return render(ctx, src, assets, true)
+}
+
+func render(ctx context.Context, src string, assets Resolver, draft bool) (template.HTML, []Problem, bool, error) {
 	source := []byte(src)
 	doc := md.Parser().Parse(text.NewReader(source))
 	p := newPass(source)
+	p.draft = draft
 	p.walk(doc)
 	if err := p.resolve(ctx, assets); err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	var buf bytes.Buffer
 	if err := md.Renderer().Render(&buf, source, doc); err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	sort.SliceStable(p.problems, func(i, j int) bool { return p.problems[i].Line < p.problems[j].Line })
-	return template.HTML(buf.String()), slices.Compact(p.problems), nil
+	return template.HTML(buf.String()), slices.Compact(p.problems), p.pending, nil
 }
 
 // pass walks the parsed document once, changes it into what the renderer
@@ -91,6 +104,8 @@ type pass struct {
 	images     []*imageNode
 	figures    []*shortcode
 	tabs       int
+	draft      bool
+	pending    bool
 }
 
 func newPass(source []byte) *pass {
@@ -280,11 +295,12 @@ func (p *pass) resolve(ctx context.Context, assets Resolver) error {
 		switch {
 		case a == nil:
 			p.report(n, "There is no image %s in Media.", media.URL(im.key))
-		case a.Status == media.Processing:
+		case a.Status == media.Processing && !p.draft:
 			p.report(n, "The image %s is still being processed.", media.URL(im.key))
 		case a.Status == media.Failed:
 			p.report(n, "The image %s couldn’t be processed: %s", media.URL(im.key), a.Error)
 		default:
+			p.pending = p.pending || a.Status == media.Processing
 			im.Asset = a
 			if im.Alt == "" {
 				im.Alt = a.Alt

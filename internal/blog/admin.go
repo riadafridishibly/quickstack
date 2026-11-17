@@ -86,6 +86,19 @@ type editView struct {
 	Stored  *db.Post
 	Form    postForm
 	Message string
+	// Images are the newest in Media, to copy into the body.
+	Images []db.ListAssetsRow
+}
+
+const pickerImages = 12
+
+// render renders the whole edit page.
+func (h adminHandler) render(w http.ResponseWriter, r *http.Request, status int, v editView) error {
+	var err error
+	if v.Images, err = h.q.ListAssets(r.Context(), db.ListAssetsParams{Lim: pickerImages}); err != nil {
+		return err
+	}
+	return web.Render(w, r, status, editPage(v))
 }
 
 func (v editView) action() string {
@@ -96,13 +109,13 @@ func (v editView) action() string {
 }
 
 func (h adminHandler) newPost(w http.ResponseWriter, r *http.Request) error {
-	return web.Render(w, r, http.StatusOK, editPage(editView{Form: postForm{Errors: map[string]string{}}}))
+	return h.render(w, r, http.StatusOK, editView{Form: postForm{Errors: map[string]string{}}})
 }
 
 func (h adminHandler) create(w http.ResponseWriter, r *http.Request) error {
 	f := postFormFrom(r)
 	if !f.validate() {
-		return renderForm(w, r, editView{Form: f})
+		return h.renderForm(w, r, editView{Form: f})
 	}
 	me := auth.From(r.Context())
 	var p db.Post
@@ -111,7 +124,7 @@ func (h adminHandler) create(w http.ResponseWriter, r *http.Request) error {
 		return err
 	})
 	if errors.Is(err, errInvalid) {
-		return renderForm(w, r, editView{Form: f})
+		return h.renderForm(w, r, editView{Form: f})
 	}
 	if err != nil {
 		return err
@@ -132,11 +145,11 @@ func doneFor(action string) string {
 
 // renderForm re-renders a form that wasn't saved: the form alone for htmx,
 // the whole page otherwise.
-func renderForm(w http.ResponseWriter, r *http.Request, v editView) error {
+func (h adminHandler) renderForm(w http.ResponseWriter, r *http.Request, v editView) error {
 	if web.IsHTMX(r) {
 		return web.Render(w, r, http.StatusUnprocessableEntity, postFormEl(v))
 	}
-	return web.Render(w, r, http.StatusUnprocessableEntity, editPage(v))
+	return h.render(w, r, http.StatusUnprocessableEntity, v)
 }
 
 func (h adminHandler) edit(w http.ResponseWriter, r *http.Request) error {
@@ -161,7 +174,7 @@ func (h adminHandler) edit(w http.ResponseWriter, r *http.Request) error {
 	case "unpublished":
 		v.Message = "Unpublished. The post is a draft again."
 	}
-	return web.Render(w, r, http.StatusOK, editPage(v))
+	return h.render(w, r, http.StatusOK, v)
 }
 
 func (h adminHandler) update(w http.ResponseWriter, r *http.Request) error {
@@ -193,7 +206,7 @@ func (h adminHandler) update(w http.ResponseWriter, r *http.Request) error {
 		f.UpdatedAt = old.UpdatedAt.Format(time.RFC3339Nano)
 		fallthrough
 	case errors.Is(err, errInvalid), err == nil && !ok:
-		return renderForm(w, r, editView{Stored: &old, Form: f})
+		return h.renderForm(w, r, editView{Stored: &old, Form: f})
 	case err != nil:
 		return web.NotFoundIfNoRows(err)
 	}
@@ -225,6 +238,8 @@ func (h adminHandler) delete(w http.ResponseWriter, r *http.Request) error {
 type previewView struct {
 	HTML     template.HTML
 	Problems []markdown.Problem
+	// Pending says an image is still processing.
+	Pending bool
 }
 
 // previewDraft renders the body of the form as it is being written: the
@@ -232,12 +247,12 @@ type previewView struct {
 // otherwise.
 func (h adminHandler) previewDraft(w http.ResponseWriter, r *http.Request) error {
 	f := postFormFrom(r)
-	html, problems, err := markdown.Render(r.Context(), f.Body, h.q.ListAssetsByKeys)
+	html, problems, pending, err := markdown.Draft(r.Context(), f.Body, h.q.ListAssetsByKeys)
 	if err != nil {
 		return err
 	}
 	if web.IsHTMX(r) {
-		return web.Render(w, r, http.StatusOK, previewPane(previewView{HTML: html, Problems: problems}))
+		return web.Render(w, r, http.StatusOK, previewPane(previewView{HTML: html, Problems: problems, Pending: pending}))
 	}
 	f.validate()
 	if f.Title == "" {

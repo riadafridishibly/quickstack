@@ -126,6 +126,7 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 - Pass larger data with `@templ.JSONScript(id, value)`, placed before the element, and read it with `readJSON(id)`.
 - Island form fields live in light DOM and submit with the surrounding form. The server re-normalizes and re-validates everything.
 - An island gets `data-mounted` once it renders. e2e tests wait for `<tag>[data-mounted]` before using it.
+- `<markdown-editor>` mounts CodeMirror in a shadow root. There CodeMirror's styles are constructed stylesheets, which the CSP allows; on the document it adds a `<style>` element, which the CSP blocks. Theme colors reach it as CSS variables.
 
 ## Generated code: don't edit
 
