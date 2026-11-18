@@ -185,6 +185,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, store blob.Store, reset bool, 
 				return fmt.Errorf("%s: %w", p.Email, err)
 			}
 			ids[p.Email] = acc.ID
+			if err := q.MarkEmailVerified(ctx, acc.ID); err != nil {
+				return err
+			}
 			if p.Platform != "" {
 				r := string(p.Platform)
 				if _, err := q.SetPlatformRole(ctx, db.SetPlatformRoleParams{ID: acc.ID, PlatformRole: &r}); err != nil {

@@ -18,7 +18,7 @@ test("reset a forgotten password from the email", async ({ page }) => {
   await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(page.getByText("Check your email")).toBeVisible();
 
-  await page.goto(await mailLink(page, "cy@example.com"));
+  await page.goto(await mailLink(page, "cy@example.com", "Reset your"));
   await page.getByLabel("New password", { exact: true }).fill("second password");
   await page.getByLabel("Confirm new password").fill("second password");
   await page.getByRole("button", { name: "Set password and sign in" }).click();

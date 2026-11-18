@@ -39,28 +39,40 @@ func shell(ctx context.Context) web.Shell {
 }
 
 type profileView struct {
-	Name  string
-	Email string
-	Error string
-	Saved bool
+	Name     string
+	Email    string
+	Verified bool
+	Error    string
+	Message  string
 }
 
 templ profilePage(v profileView) {
 	@Layout("Profile") {
 		@web.PageHeader("Profile")
-		if v.Saved {
-			@web.Flash("Profile saved.")
-		}
+		@web.Flash(v.Message)
 		<form method="post" action={ templ.SafeURL(profilePath) } novalidate class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
 			@web.Field("Name", "name", v.Error) {
 				<input type="text" { web.InputAttrs("name", v.Error)... } value={ v.Name } autocomplete="name" required class={ web.InputClass }/>
 			}
 			<div class="space-y-1.5">
 				<p class="text-sm font-medium">Email</p>
-				<p class="break-all">{ v.Email }</p>
+				<p class="break-all">
+					{ v.Email }
+					if v.Verified {
+						<span class="badge badge-soft badge-success ml-1">Verified</span>
+					} else {
+						<span class="badge badge-soft badge-warning ml-1">Not verified</span>
+					}
+				</p>
 			</div>
 			<button type="submit" class={ web.ButtonClass }>Save</button>
 		</form>
+		if !v.Verified {
+			<form method="post" action={ templ.SafeURL(profilePath + "/verify-email") } class={ web.PaddedCardClass, "mt-6 max-w-xl space-y-3" }>
+				<p class="text-sm">Verify your email to show it belongs to you. We’ll send a link to { v.Email }.</p>
+				<button type="submit" class={ web.SecondaryButtonClass }>Send verification link</button>
+			</form>
+		}
 	}
 }
 
@@ -69,19 +81,28 @@ templ securityPage(v securityView) {
 		@web.PageHeader("Security")
 		@web.Flash(v.Message)
 		<div class="grid gap-6 lg:grid-cols-2">
-			<form method="post" action={ templ.SafeURL(securityPath + "/password") } novalidate class={ web.PaddedCardClass, "space-y-5" }>
-				<h2 class="text-lg font-semibold">Change password</h2>
-				@web.Field("Current password", "current_password", v.Form.Errors["current_password"]) {
-					<input type="password" { web.InputAttrs("current_password", v.Form.Errors["current_password"])... } autocomplete="current-password" required class={ web.InputClass }/>
-				}
-				@web.Field("New password", "new_password", v.Form.Errors["new_password"]) {
-					<input type="password" { web.InputAttrs("new_password", v.Form.Errors["new_password"])... } autocomplete="new-password" required minlength="10" class={ web.InputClass }/>
-				}
-				@web.Field("Confirm new password", "confirm_password", v.Form.Errors["confirm_password"]) {
-					<input type="password" { web.InputAttrs("confirm_password", v.Form.Errors["confirm_password"])... } autocomplete="new-password" required class={ web.InputClass }/>
-				}
-				<button type="submit" class={ web.ButtonClass }>Change password</button>
-			</form>
+			if !v.HasPassword {
+				<form method="post" action="/forgot-password" class={ web.PaddedCardClass, "space-y-3" }>
+					<h2 class="text-lg font-semibold">Set a password</h2>
+					<p class="text-sm opacity-80">Your account has no password. We’ll email you a link to choose one.</p>
+					<input type="hidden" name="email" value={ v.Email }/>
+					<button type="submit" class={ web.SecondaryButtonClass }>Send link</button>
+				</form>
+			} else {
+				<form method="post" action={ templ.SafeURL(securityPath + "/password") } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+					<h2 class="text-lg font-semibold">Change password</h2>
+					@web.Field("Current password", "current_password", v.Form.Errors["current_password"]) {
+						<input type="password" { web.InputAttrs("current_password", v.Form.Errors["current_password"])... } autocomplete="current-password" required class={ web.InputClass }/>
+					}
+					@web.Field("New password", "new_password", v.Form.Errors["new_password"]) {
+						<input type="password" { web.InputAttrs("new_password", v.Form.Errors["new_password"])... } autocomplete="new-password" required minlength="10" class={ web.InputClass }/>
+					}
+					@web.Field("Confirm new password", "confirm_password", v.Form.Errors["confirm_password"]) {
+						<input type="password" { web.InputAttrs("confirm_password", v.Form.Errors["confirm_password"])... } autocomplete="new-password" required class={ web.InputClass }/>
+					}
+					<button type="submit" class={ web.ButtonClass }>Change password</button>
+				</form>
+			}
 			<section class={ web.PaddedCardClass }>
 				<h2 class="text-lg font-semibold">Sessions</h2>
 				<p class="mt-1 text-sm opacity-70">Where you’re signed in. Sign out of a device you don’t recognize, then change your password.</p>

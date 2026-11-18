@@ -28,6 +28,7 @@ func Routes(mux *http.ServeMux, a *auth.Auth, pool *pgxpool.Pool) {
 	h := handler{auth: a, q: db.New(pool)}
 	mux.Handle("GET "+profilePath, web.Handle(h.profile))
 	mux.Handle("POST "+profilePath, web.Handle(h.updateProfile))
+	mux.Handle("POST "+profilePath+"/verify-email", web.Handle(h.sendVerification))
 	mux.Handle("GET "+securityPath, web.Handle(h.security))
 	mux.Handle("POST "+securityPath+"/password", web.Handle(h.changePassword))
 	mux.Handle("POST "+securityPath+"/sessions/{id}/delete", web.Handle(h.deleteSession))
@@ -36,34 +37,64 @@ func Routes(mux *http.ServeMux, a *auth.Auth, pool *pgxpool.Pool) {
 
 func (h handler) profile(w http.ResponseWriter, r *http.Request) error {
 	u := auth.From(r.Context())
-	v := profileView{Name: u.Name, Email: u.Email, Saved: r.URL.Query().Get("saved") == "1"}
+	v := profileView{Name: u.Name, Email: u.Email, Verified: u.EmailVerified}
+	switch r.URL.Query().Get("done") {
+	case "saved":
+		v.Message = "Profile saved."
+	case "sent":
+		v.Message = "We sent a verification link to " + u.Email + "."
+	}
 	return web.Render(w, r, http.StatusOK, profilePage(v))
 }
 
 func (h handler) updateProfile(w http.ResponseWriter, r *http.Request) error {
 	u := auth.From(r.Context())
-	v := profileView{Name: strings.TrimSpace(r.PostFormValue("name")), Email: u.Email}
+	v := profileView{Name: strings.TrimSpace(r.PostFormValue("name")), Email: u.Email, Verified: u.EmailVerified}
 	if v.Error = auth.CheckName(v.Name); v.Error != "" {
 		return web.Render(w, r, http.StatusUnprocessableEntity, profilePage(v))
 	}
 	if _, err := h.q.UpdateAccountName(r.Context(), db.UpdateAccountNameParams{ID: u.ID, Name: v.Name}); err != nil {
 		return err
 	}
-	web.Redirect(w, r, profilePath+"?saved=1")
+	web.Redirect(w, r, profilePath+"?done=saved")
+	return nil
+}
+
+func (h handler) sendVerification(w http.ResponseWriter, r *http.Request) error {
+	u := auth.From(r.Context())
+	err := h.auth.SendVerification(r.Context(), u)
+	switch {
+	case errors.Is(err, auth.ErrEmailVerified):
+		web.Redirect(w, r, profilePath)
+	case errors.Is(err, auth.ErrTooManyAttempts):
+		v := profileView{Name: u.Name, Email: u.Email, Error: "We sent several links already. Wait a few minutes and try again."}
+		return web.Render(w, r, http.StatusTooManyRequests, profilePage(v))
+	case err != nil:
+		return err
+	default:
+		web.Redirect(w, r, profilePath+"?done=sent")
+	}
 	return nil
 }
 
 type securityView struct {
-	Form     passwordForm
-	Sessions []db.ListSessionsRow
-	Current  int64
-	Message  string
+	Email string
+	// HasPassword is false for an account that signs in only another way.
+	HasPassword bool
+	Form        passwordForm
+	Sessions    []db.ListSessionsRow
+	Current     int64
+	Message     string
 }
 
 func (h handler) loadSecurity(r *http.Request, v *securityView) error {
 	u := auth.From(r.Context())
-	v.Current = u.SessionID
-	var err error
+	v.Email, v.Current = u.Email, u.SessionID
+	acc, err := h.q.GetAccount(r.Context(), u.ID)
+	if err != nil {
+		return err
+	}
+	v.HasPassword = acc.PasswordHash != nil
 	v.Sessions, err = h.q.ListSessions(r.Context(), u.ID)
 	return err
 }

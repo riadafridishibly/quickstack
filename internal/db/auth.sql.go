@@ -10,16 +10,50 @@ import (
 	"time"
 )
 
+const attemptLoginChallenge = `-- name: AttemptLoginChallenge :one
+UPDATE login_challenges SET attempts = attempts + 1
+WHERE token_hash = $1 AND expires_at > now() AND attempts < $2
+RETURNING account_id, next
+`
+
+type AttemptLoginChallengeParams struct {
+	TokenHash   []byte
+	MaxAttempts int32
+}
+
+type AttemptLoginChallengeRow struct {
+	AccountID int64
+	Next      string
+}
+
+// AttemptLoginChallenge counts an attempt before it is checked, so parallel
+// guesses can't share one.
+func (q *Queries) AttemptLoginChallenge(ctx context.Context, arg AttemptLoginChallengeParams) (AttemptLoginChallengeRow, error) {
+	row := q.db.QueryRow(ctx, attemptLoginChallenge, arg.TokenHash, arg.MaxAttempts)
+	var i AttemptLoginChallengeRow
+	err := row.Scan(&i.AccountID, &i.Next)
+	return i, err
+}
+
+const confirmSession = `-- name: ConfirmSession :exec
+UPDATE sessions SET authenticated_at = now() WHERE token_hash = $1
+`
+
+func (q *Queries) ConfirmSession(ctx context.Context, tokenHash []byte) error {
+	_, err := q.db.Exec(ctx, confirmSession, tokenHash)
+	return err
+}
+
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (email, name, password_hash)
 VALUES ($1, $2, $3)
-RETURNING id, email, name, password_hash, platform_role, created_at, updated_at
+RETURNING id, email, email_verified_at, name, password_hash, platform_role, created_at, updated_at
 `
 
 type CreateAccountParams struct {
 	Email        string
 	Name         string
-	PasswordHash string
+	PasswordHash *string
 }
 
 func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
@@ -28,6 +62,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.EmailVerifiedAt,
 		&i.Name,
 		&i.PasswordHash,
 		&i.PlatformRole,
@@ -35,6 +70,50 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const createEmailVerification = `-- name: CreateEmailVerification :exec
+INSERT INTO email_verifications (token_hash, account_id, email, expires_at)
+VALUES ($1, $2, $3, $4)
+`
+
+type CreateEmailVerificationParams struct {
+	TokenHash []byte
+	AccountID int64
+	Email     string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateEmailVerification(ctx context.Context, arg CreateEmailVerificationParams) error {
+	_, err := q.db.Exec(ctx, createEmailVerification,
+		arg.TokenHash,
+		arg.AccountID,
+		arg.Email,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const createLoginChallenge = `-- name: CreateLoginChallenge :exec
+INSERT INTO login_challenges (token_hash, account_id, next, expires_at)
+VALUES ($1, $2, $3, $4)
+`
+
+type CreateLoginChallengeParams struct {
+	TokenHash []byte
+	AccountID int64
+	Next      string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateLoginChallenge(ctx context.Context, arg CreateLoginChallengeParams) error {
+	_, err := q.db.Exec(ctx, createLoginChallenge,
+		arg.TokenHash,
+		arg.AccountID,
+		arg.Next,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const createPasswordReset = `-- name: CreatePasswordReset :exec
@@ -54,13 +133,14 @@ func (q *Queries) CreatePasswordReset(ctx context.Context, arg CreatePasswordRes
 }
 
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (token_hash, account_id, user_agent, expires_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO sessions (token_hash, account_id, aal, user_agent, expires_at)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateSessionParams struct {
 	TokenHash []byte
 	AccountID int64
+	Aal       int16
 	UserAgent string
 	ExpiresAt time.Time
 }
@@ -69,6 +149,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 	_, err := q.db.Exec(ctx, createSession,
 		arg.TokenHash,
 		arg.AccountID,
+		arg.Aal,
 		arg.UserAgent,
 		arg.ExpiresAt,
 	)
@@ -87,12 +168,30 @@ func (q *Queries) DeleteAccountSessions(ctx context.Context, accountID int64) (i
 	return result.RowsAffected(), nil
 }
 
+const deleteEmailVerifications = `-- name: DeleteEmailVerifications :exec
+DELETE FROM email_verifications WHERE account_id = $1
+`
+
+func (q *Queries) DeleteEmailVerifications(ctx context.Context, accountID int64) error {
+	_, err := q.db.Exec(ctx, deleteEmailVerifications, accountID)
+	return err
+}
+
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE account_id = $1 AND expires_at <= now()
 `
 
 func (q *Queries) DeleteExpiredSessions(ctx context.Context, accountID int64) error {
 	_, err := q.db.Exec(ctx, deleteExpiredSessions, accountID)
+	return err
+}
+
+const deleteLoginChallenge = `-- name: DeleteLoginChallenge :exec
+DELETE FROM login_challenges WHERE token_hash = $1
+`
+
+func (q *Queries) DeleteLoginChallenge(ctx context.Context, tokenHash []byte) error {
+	_, err := q.db.Exec(ctx, deleteLoginChallenge, tokenHash)
 	return err
 }
 
@@ -149,7 +248,7 @@ func (q *Queries) DeleteSessionByID(ctx context.Context, arg DeleteSessionByIDPa
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, email, name, password_hash, platform_role, created_at, updated_at FROM accounts WHERE id = $1
+SELECT id, email, email_verified_at, name, password_hash, platform_role, created_at, updated_at FROM accounts WHERE id = $1
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
@@ -158,6 +257,7 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.EmailVerifiedAt,
 		&i.Name,
 		&i.PasswordHash,
 		&i.PlatformRole,
@@ -168,7 +268,7 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, name, password_hash, platform_role, created_at, updated_at FROM accounts WHERE email = $1
+SELECT id, email, email_verified_at, name, password_hash, platform_role, created_at, updated_at FROM accounts WHERE email = $1
 `
 
 func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
@@ -177,12 +277,51 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.EmailVerifiedAt,
 		&i.Name,
 		&i.PasswordHash,
 		&i.PlatformRole,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const getEmailVerification = `-- name: GetEmailVerification :one
+SELECT account_id, email FROM email_verifications WHERE token_hash = $1 AND expires_at > now()
+`
+
+type GetEmailVerificationRow struct {
+	AccountID int64
+	Email     string
+}
+
+func (q *Queries) GetEmailVerification(ctx context.Context, tokenHash []byte) (GetEmailVerificationRow, error) {
+	row := q.db.QueryRow(ctx, getEmailVerification, tokenHash)
+	var i GetEmailVerificationRow
+	err := row.Scan(&i.AccountID, &i.Email)
+	return i, err
+}
+
+const getLoginChallenge = `-- name: GetLoginChallenge :one
+SELECT account_id, next FROM login_challenges
+WHERE token_hash = $1 AND expires_at > now() AND attempts < $2
+`
+
+type GetLoginChallengeParams struct {
+	TokenHash   []byte
+	MaxAttempts int32
+}
+
+type GetLoginChallengeRow struct {
+	AccountID int64
+	Next      string
+}
+
+func (q *Queries) GetLoginChallenge(ctx context.Context, arg GetLoginChallengeParams) (GetLoginChallengeRow, error) {
+	row := q.db.QueryRow(ctx, getLoginChallenge, arg.TokenHash, arg.MaxAttempts)
+	var i GetLoginChallengeRow
+	err := row.Scan(&i.AccountID, &i.Next)
 	return i, err
 }
 
@@ -198,19 +337,23 @@ func (q *Queries) GetPasswordReset(ctx context.Context, tokenHash []byte) (int64
 }
 
 const getSession = `-- name: GetSession :one
-SELECT s.id AS session_id, s.last_seen_at, a.id, a.email, a.name, a.platform_role
+SELECT s.id AS session_id, s.aal, s.authenticated_at, s.last_seen_at,
+       a.id, a.email, a.email_verified_at, a.name, a.platform_role
 FROM sessions s
 JOIN accounts a ON a.id = s.account_id
 WHERE s.token_hash = $1 AND s.expires_at > now()
 `
 
 type GetSessionRow struct {
-	SessionID    int64
-	LastSeenAt   time.Time
-	ID           int64
-	Email        string
-	Name         string
-	PlatformRole *string
+	SessionID       int64
+	Aal             int16
+	AuthenticatedAt time.Time
+	LastSeenAt      time.Time
+	ID              int64
+	Email           string
+	EmailVerifiedAt *time.Time
+	Name            string
+	PlatformRole    *string
 }
 
 func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (GetSessionRow, error) {
@@ -218,9 +361,12 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (GetSessionR
 	var i GetSessionRow
 	err := row.Scan(
 		&i.SessionID,
+		&i.Aal,
+		&i.AuthenticatedAt,
 		&i.LastSeenAt,
 		&i.ID,
 		&i.Email,
+		&i.EmailVerifiedAt,
 		&i.Name,
 		&i.PlatformRole,
 	)
@@ -266,6 +412,39 @@ func (q *Queries) ListSessions(ctx context.Context, accountID int64) ([]ListSess
 	return items, nil
 }
 
+const markEmailVerified = `-- name: MarkEmailVerified :exec
+UPDATE accounts SET email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1
+`
+
+func (q *Queries) MarkEmailVerified(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markEmailVerified, id)
+	return err
+}
+
+const purgeExpiredEmailVerifications = `-- name: PurgeExpiredEmailVerifications :execrows
+DELETE FROM email_verifications WHERE expires_at <= now()
+`
+
+func (q *Queries) PurgeExpiredEmailVerifications(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeExpiredEmailVerifications)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeExpiredLoginChallenges = `-- name: PurgeExpiredLoginChallenges :execrows
+DELETE FROM login_challenges WHERE expires_at <= now()
+`
+
+func (q *Queries) PurgeExpiredLoginChallenges(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeExpiredLoginChallenges)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const purgeExpiredPasswordResets = `-- name: PurgeExpiredPasswordResets :execrows
 DELETE FROM password_resets WHERE expires_at <= now()
 `
@@ -305,6 +484,24 @@ func (q *Queries) SetPlatformRole(ctx context.Context, arg SetPlatformRoleParams
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const takeEmailVerification = `-- name: TakeEmailVerification :one
+DELETE FROM email_verifications
+WHERE token_hash = $1 AND expires_at > now()
+RETURNING account_id, email
+`
+
+type TakeEmailVerificationRow struct {
+	AccountID int64
+	Email     string
+}
+
+func (q *Queries) TakeEmailVerification(ctx context.Context, tokenHash []byte) (TakeEmailVerificationRow, error) {
+	row := q.db.QueryRow(ctx, takeEmailVerification, tokenHash)
+	var i TakeEmailVerificationRow
+	err := row.Scan(&i.AccountID, &i.Email)
+	return i, err
 }
 
 const takePasswordReset = `-- name: TakePasswordReset :one
@@ -356,12 +553,30 @@ UPDATE accounts SET password_hash = $1, updated_at = now() WHERE id = $2
 `
 
 type UpdateAccountPasswordParams struct {
-	PasswordHash string
+	PasswordHash *string
 	ID           int64
 }
 
 func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateAccountPassword, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const verifyEmail = `-- name: VerifyEmail :execrows
+UPDATE accounts SET email_verified_at = coalesce(email_verified_at, now())
+WHERE id = $1 AND email = $2
+`
+
+type VerifyEmailParams struct {
+	ID    int64
+	Email string
+}
+
+func (q *Queries) VerifyEmail(ctx context.Context, arg VerifyEmailParams) (int64, error) {
+	result, err := q.db.Exec(ctx, verifyEmail, arg.ID, arg.Email)
 	if err != nil {
 		return 0, err
 	}
