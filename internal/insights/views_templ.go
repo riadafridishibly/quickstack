@@ -217,7 +217,7 @@ func overviewPage(v overviewView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if auth.CanIn(ctx, auth.ManageProjects) {
+			if auth.Workspace.CanIn(ctx, auth.ManageProjects) {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<p class=\"mt-6 text-sm opacity-70\">Start something new: ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

@@ -2,11 +2,13 @@ package auth
 
 import (
 	"context"
-	"net/http"
 	"slices"
-
-	"github.com/riadafridishibly/quickstack/internal/web"
 )
+
+// This file is the app's permissions: who may do what in a workspace and in
+// /admin. A project that copies auth rewrites it. Code outside it asks about
+// actions, never about role names. internal/app/testdata/permissions.golden
+// shows the result; go test ./internal/app -update rewrites it.
 
 // Role is what a member may do in one workspace.
 type Role string
@@ -41,30 +43,37 @@ func (r Role) Label() string {
 	return string(r)
 }
 
-// Action is something a workspace role may be allowed to do. Every member
-// may see the workspace's projects and tasks.
-type Action int
+// Action is something a workspace role may be allowed to do.
+type Action string
 
 const (
+	// AnyMember is for what every member may do, such as see the
+	// workspace's projects and tasks.
+	AnyMember Action = "any_member"
 	// EditTasks covers creating, editing, moving and deleting tasks.
-	EditTasks Action = iota
-	ManageProjects
-	ManageMembers
+	EditTasks      Action = "edit_tasks"
+	ManageProjects Action = "manage_projects"
+	ManageMembers  Action = "manage_members"
+	// ManageOwners covers making someone owner, and changing the role of or
+	// removing an owner.
+	ManageOwners Action = "manage_owners"
 	// ManageWorkspace covers the workspace's name, URL and public roadmap.
-	ManageWorkspace
+	ManageWorkspace Action = "manage_workspace"
 )
 
-var allowed = map[Action][]Role{
+// Workspace is what each role may do in a workspace. The role comes from
+// workspaces.Middleware through WithRole.
+var Workspace = NewPolicy(Roles, map[Action][]Role{
+	AnyMember:       Roles,
 	EditTasks:       {Owner, Admin, Member},
 	ManageProjects:  {Owner, Admin, Member},
 	ManageMembers:   {Owner, Admin},
+	ManageOwners:    {Owner},
 	ManageWorkspace: {Owner, Admin},
-}
+}, roleFrom)
 
-// Can reports whether role may perform action.
-func Can(role Role, action Action) bool {
-	return slices.Contains(allowed[action], role)
-}
+// WorkspaceRouter registers routes inside /w/{ws}.
+type WorkspaceRouter = Router[Role, Action]
 
 type roleKey struct{}
 
@@ -73,30 +82,9 @@ func WithRole(ctx context.Context, r Role) context.Context {
 	return context.WithValue(ctx, roleKey{}, r)
 }
 
-// RoleFrom returns the role WithRole recorded, or "".
-func RoleFrom(ctx context.Context) Role {
+func roleFrom(ctx context.Context) Role {
 	r, _ := ctx.Value(roleKey{}).(Role)
 	return r
-}
-
-// CanIn reports whether the signed-in user's role in the workspace in ctx
-// allows action. Templates use it to decide what to show.
-func CanIn(ctx context.Context, action Action) bool {
-	return Can(RoleFrom(ctx), action)
-}
-
-// Require responds 403 unless the user's role in the workspace allows
-// action.
-func Require(action Action) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return web.Handle(func(w http.ResponseWriter, r *http.Request) error {
-			if !CanIn(r.Context(), action) {
-				return web.ErrForbidden
-			}
-			next.ServeHTTP(w, r)
-			return nil
-		})
-	}
 }
 
 // PlatformRole is a role in running the service, separate from any
@@ -126,43 +114,34 @@ func (r PlatformRole) Label() string {
 	return string(r)
 }
 
-type PlatformAction int
+type PlatformAction string
 
 const (
 	// OpenAdmin lets a role into /admin. Each section there checks its own
 	// action as well.
-	OpenAdmin PlatformAction = iota
+	OpenAdmin PlatformAction = "open_admin"
 	// ViewAccounts covers the overview, accounts, workspaces and the audit
 	// log.
-	ViewAccounts
+	ViewAccounts PlatformAction = "view_accounts"
 	// SignOutAccounts ends all of an account's sessions, for support.
-	SignOutAccounts
-	ManagePlatformRoles
-	ManageBlog
+	SignOutAccounts     PlatformAction = "sign_out_accounts"
+	ManagePlatformRoles PlatformAction = "manage_platform_roles"
+	ManageBlog          PlatformAction = "manage_blog"
 )
 
-var platformAllowed = map[PlatformAction][]PlatformRole{
+// Platform is what each platform role may do in /admin.
+var Platform = NewPolicy(PlatformRoles, map[PlatformAction][]PlatformRole{
 	OpenAdmin:           {Superadmin, Support, Editor},
 	ViewAccounts:        {Superadmin, Support},
 	SignOutAccounts:     {Superadmin, Support},
 	ManagePlatformRoles: {Superadmin},
 	ManageBlog:          {Superadmin, Editor},
-}
-
-func CanPlatform(role PlatformRole, action PlatformAction) bool {
-	return slices.Contains(platformAllowed[action], role)
-}
-
-// RequirePlatform responds 403 unless the signed-in user's platform role
-// allows action.
-func RequirePlatform(action PlatformAction) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return web.Handle(func(w http.ResponseWriter, r *http.Request) error {
-			if u := From(r.Context()); u == nil || !CanPlatform(u.PlatformRole, action) {
-				return web.ErrForbidden
-			}
-			next.ServeHTTP(w, r)
-			return nil
-		})
+}, func(ctx context.Context) PlatformRole {
+	if u := From(ctx); u != nil {
+		return u.PlatformRole
 	}
-}
+	return ""
+})
+
+// PlatformRouter registers routes inside /admin.
+type PlatformRouter = Router[PlatformRole, PlatformAction]

@@ -75,6 +75,5 @@ FROM invitations i
 JOIN workspaces w ON w.id = i.workspace_id
 WHERE i.token_hash = @token_hash AND i.expires_at > now();
 
--- name: RecordAudit :exec
-INSERT INTO audit_log (actor_id, workspace_id, action, target)
-VALUES (sqlc.narg(actor_id), sqlc.narg(workspace_id), @action, @target);
+-- name: PurgeExpiredInvitations :execrows
+DELETE FROM invitations WHERE expires_at <= now();

@@ -27,7 +27,7 @@ func shell(ctx context.Context) web.Shell {
 		{Label: "Projects", Href: ws.URL("/projects")},
 	}
 	manage := []web.NavItem{{Label: "Members", Href: ws.URL("/members")}}
-	if auth.CanIn(ctx, auth.ManageWorkspace) {
+	if auth.Workspace.CanIn(ctx, auth.ManageWorkspace) {
 		manage = append(manage, web.NavItem{Label: "Settings", Href: ws.URL("/settings")})
 	}
 	if ws.Public {
@@ -43,7 +43,7 @@ func shell(ctx context.Context) web.Shell {
 	}
 	if u != nil {
 		s.UserName, s.UserEmail = u.Name, u.Email
-		if auth.CanPlatform(u.PlatformRole, auth.OpenAdmin) {
+		if auth.Platform.CanIn(ctx, auth.OpenAdmin) {
 			s.Links = append(s.Links, web.NavItem{Label: "Platform admin", Href: "/admin"})
 		}
 	}
@@ -139,7 +139,7 @@ templ membersPage(v membersView) {
 					</tbody>
 				</table>
 			</div>
-			if auth.CanIn(ctx, auth.ManageMembers) {
+			if auth.Workspace.CanIn(ctx, auth.ManageMembers) {
 				@invitations(v)
 			}
 		</div>
@@ -150,8 +150,7 @@ templ membersPage(v membersView) {
 // a Save button for when JavaScript is off.
 templ memberRow(m db.ListMembersRow) {
 	{{ ws, me := tenant.From(ctx), auth.From(ctx) }}
-	{{ isOwner := auth.Role(m.Role) == auth.Owner }}
-	{{ canEdit := auth.CanIn(ctx, auth.ManageMembers) && (!isOwner || auth.RoleFrom(ctx) == auth.Owner) }}
+	{{ canEdit := canManage(ctx, auth.Role(m.Role)) }}
 	{{ base := ws.URL("/members/" + strconv.FormatInt(m.ID, 10)) }}
 	<tr data-member={ m.Email }>
 		<td>
@@ -163,7 +162,7 @@ templ memberRow(m db.ListMembersRow) {
 				<form method="post" action={ templ.SafeURL(base + "/role") } hx-post={ base + "/role" } hx-trigger="change" hx-target="closest tr" hx-swap="outerHTML" class="flex items-center gap-2">
 					<select name="role" aria-label={ "Role of " + m.Name } class="select select-sm w-32">
 						for _, r := range auth.Roles {
-							if r != auth.Owner || auth.RoleFrom(ctx) == auth.Owner {
+							if canManage(ctx, r) {
 								<option value={ string(r) } selected?={ string(r) == m.Role }>{ r.Label() }</option>
 							}
 						}

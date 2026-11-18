@@ -131,11 +131,11 @@ func (a *Auth) reset(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// CleanupArgs is the daily job that deletes expired sessions, password
-// resets and invitations.
+// CleanupArgs is the daily job that deletes expired sessions and password
+// resets.
 type CleanupArgs struct{}
 
-func (CleanupArgs) Kind() string { return "cleanup_expired" }
+func (CleanupArgs) Kind() string { return "auth_cleanup" }
 
 type cleanupWorker struct {
 	river.WorkerDefaults[CleanupArgs]
@@ -146,10 +146,7 @@ func (w *cleanupWorker) Work(ctx context.Context, _ *river.Job[CleanupArgs]) err
 	if _, err := w.q.PurgeExpiredSessions(ctx); err != nil {
 		return err
 	}
-	if _, err := w.q.PurgeExpiredPasswordResets(ctx); err != nil {
-		return err
-	}
-	_, err := w.q.PurgeExpiredInvitations(ctx)
+	_, err := w.q.PurgeExpiredPasswordResets(ctx)
 	return err
 }
 

@@ -352,26 +352,16 @@ func (q *Queries) LockOwners(ctx context.Context, workspaceID int64) ([]int64, e
 	return items, nil
 }
 
-const recordAudit = `-- name: RecordAudit :exec
-INSERT INTO audit_log (actor_id, workspace_id, action, target)
-VALUES ($1, $2, $3, $4)
+const purgeExpiredInvitations = `-- name: PurgeExpiredInvitations :execrows
+DELETE FROM invitations WHERE expires_at <= now()
 `
 
-type RecordAuditParams struct {
-	ActorID     *int64
-	WorkspaceID *int64
-	Action      string
-	Target      string
-}
-
-func (q *Queries) RecordAudit(ctx context.Context, arg RecordAuditParams) error {
-	_, err := q.db.Exec(ctx, recordAudit,
-		arg.ActorID,
-		arg.WorkspaceID,
-		arg.Action,
-		arg.Target,
-	)
-	return err
+func (q *Queries) PurgeExpiredInvitations(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeExpiredInvitations)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateMemberRole = `-- name: UpdateMemberRole :execrows

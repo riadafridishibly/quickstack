@@ -73,14 +73,13 @@ type handler struct {
 
 // AdminRoutes adds /admin/media, where staff who manage the blog upload
 // images and edit their alt text and credit.
-func AdminRoutes(mux *http.ServeMux, pool *pgxpool.Pool, store blob.Store, jc *jobs.Client) {
+func AdminRoutes(r *auth.PlatformRouter, pool *pgxpool.Pool, store blob.Store, jc *jobs.Client) {
 	h := handler{pool: pool, q: db.New(pool), store: store, jc: jc}
-	manage := auth.RequirePlatform(auth.ManageBlog)
-	mux.Handle("GET "+adminPath, manage(web.Handle(h.list)))
-	mux.Handle("POST "+adminPath, manage(web.Handle(h.upload)))
-	mux.Handle("GET "+adminPath+"/{key}", manage(web.Handle(h.show)))
-	mux.Handle("POST "+adminPath+"/{key}", manage(web.Handle(h.update)))
-	mux.Handle("POST "+adminPath+"/{key}/delete", manage(web.Handle(h.delete)))
+	r.Handle("GET "+adminPath, auth.ManageBlog, h.list)
+	r.Handle("POST "+adminPath, auth.ManageBlog, h.upload)
+	r.Handle("GET "+adminPath+"/{key}", auth.ManageBlog, h.show)
+	r.Handle("POST "+adminPath+"/{key}", auth.ManageBlog, h.update)
+	r.Handle("POST "+adminPath+"/{key}/delete", auth.ManageBlog, h.delete)
 }
 
 func assetURL(key string) string { return adminPath + "/" + key }

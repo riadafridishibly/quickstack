@@ -33,17 +33,16 @@ type adminHandler struct {
 
 // AdminRoutes adds /admin/blog, where staff who may manage the blog write
 // posts. Register it inside /admin.
-func AdminRoutes(mux *http.ServeMux, pool *pgxpool.Pool) {
+func AdminRoutes(r *auth.PlatformRouter, pool *pgxpool.Pool) {
 	h := adminHandler{pool: pool, q: db.New(pool)}
-	manage := auth.RequirePlatform(auth.ManageBlog)
-	mux.Handle("GET "+adminPath, manage(web.Handle(h.list)))
-	mux.Handle("GET "+adminPath+"/new", manage(web.Handle(h.newPost)))
-	mux.Handle("POST "+adminPath, manage(web.Handle(h.create)))
-	mux.Handle("POST "+previewPath, manage(web.Handle(h.previewDraft)))
-	mux.Handle("GET "+adminPath+"/{id}", manage(web.Handle(h.edit)))
-	mux.Handle("POST "+adminPath+"/{id}", manage(web.Handle(h.update)))
-	mux.Handle("POST "+adminPath+"/{id}/delete", manage(web.Handle(h.delete)))
-	mux.Handle("GET "+adminPath+"/{id}/preview", manage(web.Handle(h.preview)))
+	r.Handle("GET "+adminPath, auth.ManageBlog, h.list)
+	r.Handle("GET "+adminPath+"/new", auth.ManageBlog, h.newPost)
+	r.Handle("POST "+adminPath, auth.ManageBlog, h.create)
+	r.Handle("POST "+previewPath, auth.ManageBlog, h.previewDraft)
+	r.Handle("GET "+adminPath+"/{id}", auth.ManageBlog, h.edit)
+	r.Handle("POST "+adminPath+"/{id}", auth.ManageBlog, h.update)
+	r.Handle("POST "+adminPath+"/{id}/delete", auth.ManageBlog, h.delete)
+	r.Handle("GET "+adminPath+"/{id}/preview", auth.ManageBlog, h.preview)
 }
 
 type listView struct {

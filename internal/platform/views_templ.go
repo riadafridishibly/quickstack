@@ -76,7 +76,7 @@ func shell(ctx context.Context) web.Shell {
 	}
 	if u := auth.From(ctx); u != nil {
 		s.UserName, s.UserEmail = u.Name, u.Email
-		s.Sections = []web.NavSection{{Items: navItems(u.PlatformRole)}}
+		s.Sections = []web.NavSection{{Items: navItems(ctx)}}
 	}
 	return s
 }
@@ -759,7 +759,7 @@ func accountPage(v accountView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if auth.CanPlatform(me.PlatformRole, auth.ManagePlatformRoles) && me.ID != v.Account.ID {
+			if auth.Platform.CanIn(ctx, auth.ManagePlatformRoles) && me.ID != v.Account.ID {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -930,7 +930,7 @@ func accountPage(v accountView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			if auth.CanPlatform(me.PlatformRole, auth.SignOutAccounts) && len(v.Sessions) > 0 {
+			if auth.Platform.CanIn(ctx, auth.SignOutAccounts) && len(v.Sessions) > 0 {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

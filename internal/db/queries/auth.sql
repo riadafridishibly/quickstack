@@ -72,6 +72,3 @@ DELETE FROM sessions WHERE expires_at <= now();
 
 -- name: PurgeExpiredPasswordResets :execrows
 DELETE FROM password_resets WHERE expires_at <= now();
-
--- name: PurgeExpiredInvitations :execrows
-DELETE FROM invitations WHERE expires_at <= now();

@@ -21,24 +21,21 @@ const (
 
 type handler struct{ tdb *tenant.DB }
 
-func Routes(mux *http.ServeMux, tdb *tenant.DB) {
+func Routes(r *auth.WorkspaceRouter, tdb *tenant.DB) {
 	h := handler{tdb: tdb}
-	manage := auth.Require(auth.ManageProjects)
-	edit := auth.Require(auth.EditTasks)
+	r.Handle("GET /w/{ws}/projects", auth.AnyMember, h.list)
+	r.Handle("GET /w/{ws}/projects/new", auth.ManageProjects, h.newProject)
+	r.Handle("POST /w/{ws}/projects", auth.ManageProjects, h.create)
+	r.Handle("GET /w/{ws}/projects/{id}", auth.AnyMember, h.show)
+	r.Handle("GET /w/{ws}/projects/{id}/edit", auth.ManageProjects, h.edit)
+	r.Handle("POST /w/{ws}/projects/{id}", auth.ManageProjects, h.update)
+	r.Handle("POST /w/{ws}/projects/{id}/delete", auth.ManageProjects, h.delete)
 
-	mux.Handle("GET /w/{ws}/projects", web.Handle(h.list))
-	mux.Handle("GET /w/{ws}/projects/new", manage(web.Handle(h.newProject)))
-	mux.Handle("POST /w/{ws}/projects", manage(web.Handle(h.create)))
-	mux.Handle("GET /w/{ws}/projects/{id}", web.Handle(h.show))
-	mux.Handle("GET /w/{ws}/projects/{id}/edit", manage(web.Handle(h.edit)))
-	mux.Handle("POST /w/{ws}/projects/{id}", manage(web.Handle(h.update)))
-	mux.Handle("POST /w/{ws}/projects/{id}/delete", manage(web.Handle(h.delete)))
-
-	mux.Handle("POST /w/{ws}/projects/{id}/tasks", edit(web.Handle(h.createTask)))
-	mux.Handle("GET /w/{ws}/projects/{id}/tasks/{task}", edit(web.Handle(h.editTask)))
-	mux.Handle("POST /w/{ws}/projects/{id}/tasks/{task}", edit(web.Handle(h.updateTask)))
-	mux.Handle("POST /w/{ws}/projects/{id}/tasks/{task}/move", edit(web.Handle(h.moveTask)))
-	mux.Handle("POST /w/{ws}/projects/{id}/tasks/{task}/delete", edit(web.Handle(h.deleteTask)))
+	r.Handle("POST /w/{ws}/projects/{id}/tasks", auth.EditTasks, h.createTask)
+	r.Handle("GET /w/{ws}/projects/{id}/tasks/{task}", auth.EditTasks, h.editTask)
+	r.Handle("POST /w/{ws}/projects/{id}/tasks/{task}", auth.EditTasks, h.updateTask)
+	r.Handle("POST /w/{ws}/projects/{id}/tasks/{task}/move", auth.EditTasks, h.moveTask)
+	r.Handle("POST /w/{ws}/projects/{id}/tasks/{task}/delete", auth.EditTasks, h.deleteTask)
 }
 
 func projectURL(ctx context.Context, id int64) string {

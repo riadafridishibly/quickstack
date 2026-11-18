@@ -14,7 +14,7 @@ import (
 templ listPage(v listView) {
 	@workspaces.Layout("Projects") {
 		@web.PageHeader("Projects") {
-			if auth.CanIn(ctx, auth.ManageProjects) {
+			if auth.Workspace.CanIn(ctx, auth.ManageProjects) {
 				<a href={ templ.SafeURL(tenant.From(ctx).URL("/projects/new")) } class={ web.ButtonClass }>New project</a>
 			}
 		}
@@ -157,7 +157,7 @@ templ projectPage(v projectView) {
 			if v.Project.Status == StatusArchived {
 				<span class="badge badge-soft">Archived</span>
 			}
-			if auth.CanIn(ctx, auth.ManageProjects) {
+			if auth.Workspace.CanIn(ctx, auth.ManageProjects) {
 				<a href={ templ.SafeURL(projectURL(ctx, v.Project.ID) + "/edit") } class={ web.SecondaryButtonClass }>Edit project</a>
 			}
 		}
@@ -174,7 +174,7 @@ templ projectPage(v projectView) {
 // that supports drag and drop.
 templ board(v projectView) {
 	{{ base := projectURL(ctx, v.Project.ID) }}
-	{{ canEdit := auth.CanIn(ctx, auth.EditTasks) }}
+	{{ canEdit := auth.Workspace.CanIn(ctx, auth.EditTasks) }}
 	<div id={ boardTarget } class="space-y-4">
 		if canEdit {
 			@newTaskForm(v, base)

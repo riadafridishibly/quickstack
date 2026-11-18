@@ -33,19 +33,11 @@ CREATE TABLE invitations (
     UNIQUE (workspace_id, email)
 );
 
-CREATE TABLE audit_log (
-    id           bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    at           timestamptz NOT NULL DEFAULT now(),
-    actor_id     bigint      REFERENCES accounts (id) ON DELETE SET NULL,
-    workspace_id bigint      REFERENCES workspaces (id) ON DELETE SET NULL,
-    action       text        NOT NULL,
-    target       text        NOT NULL DEFAULT ''
-);
-CREATE INDEX audit_log_at ON audit_log (at DESC, id DESC);
-CREATE INDEX audit_log_action ON audit_log (action, at DESC, id DESC);
+ALTER TABLE audit_log
+    ADD FOREIGN KEY (workspace_id) REFERENCES workspaces (id) ON DELETE SET NULL;
 
 -- +goose Down
-DROP TABLE audit_log;
+ALTER TABLE audit_log DROP CONSTRAINT audit_log_workspace_id_fkey;
 DROP TABLE invitations;
 DROP TABLE memberships;
 DROP TABLE workspaces;

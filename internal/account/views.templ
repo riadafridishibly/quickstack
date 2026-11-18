@@ -31,7 +31,7 @@ func shell(ctx context.Context) web.Shell {
 	}
 	if u != nil {
 		s.UserName, s.UserEmail = u.Name, u.Email
-		if auth.CanPlatform(u.PlatformRole, auth.OpenAdmin) {
+		if auth.Platform.CanIn(ctx, auth.OpenAdmin) {
 			s.Links = append(s.Links, web.NavItem{Label: "Platform admin", Href: "/admin"})
 		}
 	}

@@ -61,7 +61,7 @@ func listPage(v listView) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				if auth.CanIn(ctx, auth.ManageProjects) {
+				if auth.Workspace.CanIn(ctx, auth.ManageProjects) {
 					{
 						templ_7745c5c3_ElementWriter := templ_7745c5c3_Buffer
 						templ_7745c5c3_Buffer := templ.GetBuffer()
@@ -1081,7 +1081,7 @@ func projectPage(v projectView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if auth.CanIn(ctx, auth.ManageProjects) {
+				if auth.Workspace.CanIn(ctx, auth.ManageProjects) {
 					{
 						templ_7745c5c3_ElementWriter := templ_7745c5c3_Buffer
 						templ_7745c5c3_Buffer := templ.GetBuffer()
@@ -1201,7 +1201,7 @@ func board(v projectView) templ.Component {
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
 		base := projectURL(ctx, v.Project.ID)
-		canEdit := auth.CanIn(ctx, auth.EditTasks)
+		canEdit := auth.Workspace.CanIn(ctx, auth.EditTasks)
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<div id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

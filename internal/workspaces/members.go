@@ -44,7 +44,7 @@ func (h handler) loadMembers(ctx context.Context, v *membersView) (err error) {
 	if v.Members, err = h.q.ListMembers(ctx, ws.ID); err != nil {
 		return err
 	}
-	if auth.CanIn(ctx, auth.ManageMembers) {
+	if auth.Workspace.CanIn(ctx, auth.ManageMembers) {
 		v.Invitations, err = h.q.ListInvitations(ctx, ws.ID)
 	}
 	return err
@@ -150,8 +150,15 @@ func (h handler) revokeInvitation(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
-// changeRole sets a member's role. Only owners can make or unmake owners,
-// and a workspace always keeps one.
+// canManage reports whether the signed-in member may change the role of,
+// or remove, a member who has role, or give someone role. Only owners
+// manage owners.
+func canManage(ctx context.Context, role auth.Role) bool {
+	return auth.Workspace.CanIn(ctx, auth.ManageMembers) &&
+		(role != auth.Owner || auth.Workspace.CanIn(ctx, auth.ManageOwners))
+}
+
+// changeRole sets a member's role. A workspace always keeps an owner.
 func (h handler) changeRole(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	ws, u := tenant.From(ctx), auth.From(ctx)
@@ -174,8 +181,7 @@ func (h handler) changeRole(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		touchesOwner := role == auth.Owner || auth.Role(m.Role) == auth.Owner
-		if touchesOwner && auth.RoleFrom(ctx) != auth.Owner {
+		if !canManage(ctx, auth.Role(m.Role)) || !canManage(ctx, role) {
 			return web.ErrForbidden
 		}
 		if auth.Role(m.Role) == auth.Owner && role != auth.Owner && len(owners) == 1 {
@@ -213,8 +219,7 @@ func (h handler) changeRole(w http.ResponseWriter, r *http.Request) error {
 }
 
 // removeMember takes someone out of the workspace: anyone may leave, and
-// ManageMembers may remove others. Owners go only by an owner's hand, and
-// the last owner can't go.
+// canManage decides who may remove others. The last owner can't go.
 func (h handler) removeMember(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	ws, u := tenant.From(ctx), auth.From(ctx)
@@ -223,7 +228,7 @@ func (h handler) removeMember(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	self := id == u.ID
-	if !self && !auth.CanIn(ctx, auth.ManageMembers) {
+	if !self && !auth.Workspace.CanIn(ctx, auth.ManageMembers) {
 		return web.ErrForbidden
 	}
 	err = pgx.BeginTxFunc(ctx, h.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -236,13 +241,11 @@ func (h handler) removeMember(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		if auth.Role(m.Role) == auth.Owner {
-			if !self && auth.RoleFrom(ctx) != auth.Owner {
-				return web.ErrForbidden
-			}
-			if len(owners) == 1 {
-				return errLastOwner
-			}
+		if !self && !canManage(ctx, auth.Role(m.Role)) {
+			return web.ErrForbidden
+		}
+		if auth.Role(m.Role) == auth.Owner && len(owners) == 1 {
+			return errLastOwner
 		}
 		if _, err := q.DeleteMember(ctx, db.DeleteMemberParams{WorkspaceID: ws.ID, AccountID: id}); err != nil {
 			return err

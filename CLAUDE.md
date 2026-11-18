@@ -31,7 +31,7 @@ internal/app/         New(cfg, pool): every route and middleware; Serve; Workers
 internal/config/      QUICKSTACK_* environment
 internal/db/          Connect, Migrate, roles.sql, migrations/, queries/, sqlc output, EscapeLike
 internal/tenant/      Workspace, WithWorkspace/From(ctx), DB.Tx
-internal/auth/        accounts, argon2id passwords, sessions, sign in/up, password reset, roles (Can, Require, RequirePlatform); authtest/
+internal/auth/        accounts, argon2id passwords, sessions, sign in/up, password reset; Policy and Router (policy.go), this app's roles (roles.go); authtest/
 internal/workspaces/  the tenant layer: Middleware for /w/{ws}, the workspace Layout, the list at /w, settings, members, invitations
 internal/account/     the personal dashboard: profile, password, sessions; its Layout frames /w too
 internal/platform/    the staff dashboard at /admin: accounts, workspaces, audit log
@@ -56,10 +56,15 @@ e2e/                  Playwright specs; import test/expect from ./fixtures
 
 `cmd/quickstack` must never import `internal/seed`; `make check` enforces it.
 
-## Two kinds of role
+## Permissions
 
-- **Workspace roles** (`owner`, `admin`, `member`, `viewer`) live in `memberships`. `workspaces.Middleware` puts the user's role in the request context; `auth.Require(action)` enforces it on routes and `auth.CanIn(ctx, action)` decides what a template shows. Add actions in `internal/auth/roles.go`.
-- **Platform roles** (`superadmin`, `support`, `editor`) live on `accounts.platform_role` and open `/admin`: `auth.RequirePlatform(action)`, `auth.CanPlatform(role, action)`. `OpenAdmin` lets a role in; each section also checks its own action (`ViewAccounts` for accounts, workspaces and the audit log, `ManageBlog` for the blog), and the sidebar lists only those the role may open (`sections` in `internal/platform/handlers.go`). An editor sees no accounts or workspaces. Platform roles give no access to any workspace; staff see that a workspace exists and who is in it, not its data.
+Role-based. Each scope has roles, actions, and a table of which roles may perform each action, all in `internal/auth/roles.go`. Code asks about actions, never about role names.
+
+- **Workspace roles** (`owner`, `admin`, `member`, `viewer`) live in `memberships`. `workspaces.Middleware` puts the user's role in the request context, and `auth.Workspace.CanIn(ctx, action)` decides what a template shows.
+- **Platform roles** (`superadmin`, `support`, `editor`) live on `accounts.platform_role` and open `/admin`: `auth.Platform.CanIn(ctx, action)`. `OpenAdmin` lets a role in; each section also checks its own action (`ViewAccounts` for accounts, workspaces and the audit log, `ManageBlog` for the blog), and the sidebar lists only those the role may open (`sections` in `internal/platform/handlers.go`). An editor sees no accounts or workspaces. Platform roles give no access to any workspace; staff see that a workspace exists and who is in it, not its data.
+- Routes inside a workspace or `/admin` go through an `auth.WorkspaceRouter` or `auth.PlatformRouter`: `r.Handle(pattern, action, h)`. Every route names its action; `auth.AnyMember` is for what every member may do.
+- A rule about one record, such as "only owners manage owners", is a named function in the feature package that starts from an action, and both the handler and the template call it (`canManage` in `internal/workspaces/members.go`).
+- `internal/app/testdata/permissions.golden` lists role × action and the action of every workspace and admin route. After changing either, run `go test ./internal/app -update` and read the diff.
 - Ownership is the query: a row of another workspace isn't forbidden, it's not found.
 
 ## Adding a feature
@@ -75,13 +80,23 @@ Copy `internal/projects/`. It has a list with live search and a filter, create a
    `TestEveryWorkspaceTableHasRLS` fails if a table with `workspace_id` lacks the policy.
 2. Queries: `internal/db/queries/<feature>.sql` with sqlc annotations, then `make gen`. Every query still filters `WHERE workspace_id = @workspace_id`; RLS is the backstop, not the filter. Go code calls the generated methods and never builds SQL strings. Pass user search text through `db.EscapeLike` before `ILIKE`.
 3. Package `internal/<feature>/`:
-   - `handlers.go`: `Routes(mux, tdb *tenant.DB)` plus the handlers. Workspace routes are `/w/{ws}/<feature>...`, each wrapped in `auth.Require(action)` unless every member may use it
+   - `handlers.go`: `Routes(r *auth.WorkspaceRouter, tdb *tenant.DB)` plus the handlers. Workspace routes are `/w/{ws}/<feature>...`, each registered with `r.Handle(pattern, action, h)`; add actions in `internal/auth/roles.go`
    - `form.go`: parse, normalize, and validate
    - `views.templ`, with pages in `@workspaces.Layout(title)`
    - tests (see Tests)
-4. Register the routes in `internal/app/app.go` on the `ws` mux (inside a workspace), `signedIn` (any signed-in user), `adm` (platform staff) or `open` (anyone), and add a sidebar entry in the dashboard's `shell` function (`internal/workspaces/views.templ` for a workspace).
+4. Call `Routes` in `internal/app/app.go` with `wsr` (inside a workspace) or `admr` (platform staff), then run `go test ./internal/app -update`. Pages for any signed-in user go on the `signedIn` mux and public ones on `open`, with `mux.Handle`. Add a sidebar entry in the dashboard's `shell` function (`internal/workspaces/views.templ` for a workspace).
 
 To drop a sample, delete its package, its routes in `app.go`, its sidebar entry, and (before the first deploy) its migration and queries.
+
+## Copying auth
+
+Auth is the part other projects most often take on its own and adapt:
+
+- `internal/auth/`. `roles.go` holds this app's roles; the `platform_role` check in `create_auth` lists the platform roles too, so change both.
+- the migrations `*_default_privileges.sql` and `*_create_auth.sql` (accounts, sessions, password resets, the audit log)
+- the queries `auth.sql` and `audit.sql`
+
+Its code uses only `db`, `web`, `mail` and `jobs` from this module, and `make check-deps` fails otherwise; keep workspace concerns such as memberships and invitations in `internal/workspaces`. Its handler tests run through `apptest`, the whole app, so they need adapting where that doesn't exist.
 
 ## Database access
 
@@ -156,7 +171,7 @@ A site-wide blog, written at `/admin/blog` by platform roles with `ManageBlog` (
 
 ## Tests
 
-- Tests run against real Postgres, never mocks. `testdb.New(t)` gives each test its own database, copied from a migrated template and connected as `quickstack_app` so RLS applies. `testdb.CreateWorkspace` makes a workspace; `authtest.SignIn` and `authtest.Member` make accounts with session cookies.
+- Tests run against real Postgres, never mocks. `testdb.New(t)` gives each test its own database, copied from a migrated template and connected as `quickstack_app` so RLS applies. `testdb.CreateWorkspace` makes a workspace; `authtest.SignIn` makes an account with a session cookie, and `testdb.Member` one that is also in a workspace.
 - Handler tests go through the whole app: `s := apptest.New(t)`, then `s.Get`, `s.Post`, or `s.Do(apptest.Req{..., Target: "<id>"})` for an htmx request. `s.Link(email)` is the link in the last mail queued to that address.
 - Call `t.Parallel()` in tests that use `testdb`. Keep the suite fast.
 - Cover behavior that can break: each handler path (success, validation failure for htmx and plain posts, not found, forbidden, fragment vs. full page). Skip tests that only restate the code or re-test a library.
