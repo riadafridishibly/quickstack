@@ -76,7 +76,7 @@ func shell(ctx context.Context) web.Shell {
 	}
 	if u := auth.From(ctx); u != nil {
 		s.UserName, s.UserEmail = u.Name, u.Email
-		s.Sections = []web.NavSection{{Items: navItems(u.PlatformRole)}}
+		s.Sections = []web.NavSection{{Items: navItems(ctx)}}
 	}
 	return s
 }

@@ -20,14 +20,16 @@ type Policy[R ~string, A ~string] struct {
 // NewPolicy returns a Policy. roles lists every role, most privileged first;
 // role returns the signed-in user's role in the scope, or "".
 func NewPolicy[R ~string, A ~string](roles []R, allowed map[A][]R, role func(context.Context) R) *Policy[R, A] {
+	own := make(map[A][]R, len(allowed))
 	for a, rs := range allowed {
 		for _, r := range rs {
 			if !slices.Contains(roles, r) {
 				panic(fmt.Sprintf("auth: action %q names unknown role %q", a, r))
 			}
 		}
+		own[a] = slices.Clone(rs)
 	}
-	return &Policy[R, A]{roles: roles, allowed: allowed, role: role}
+	return &Policy[R, A]{roles: slices.Clone(roles), allowed: own, role: role}
 }
 
 // Can reports whether role may perform action.
@@ -58,7 +60,7 @@ func (p *Policy[R, A]) Require(action A) func(http.Handler) http.Handler {
 // Roles lists the policy's roles, most privileged first.
 func (p *Policy[R, A]) Roles() []R { return slices.Clone(p.roles) }
 
-// Actions lists the policy's actions in order.
+// Actions lists the policy's actions sorted by name.
 func (p *Policy[R, A]) Actions() []A {
 	as := make([]A, 0, len(p.allowed))
 	for a := range p.allowed {

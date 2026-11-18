@@ -90,13 +90,13 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 
 ## Copying auth
 
-Auth is meant to be copied into other projects on its own:
+Auth is the part other projects most often take on its own and adapt:
 
-- `internal/auth/`. `roles.go` holds this app's roles; a project replaces them with its own.
+- `internal/auth/`. `roles.go` holds this app's roles; the `platform_role` check in `create_auth` lists the platform roles too, so change both.
 - the migrations `*_default_privileges.sql` and `*_create_auth.sql` (accounts, sessions, password resets, the audit log)
 - the queries `auth.sql` and `audit.sql`
 
-It uses only `db`, `web`, `mail` and `jobs` from this module, and `make check-deps` fails otherwise. Keep workspace concerns such as memberships and invitations in `internal/workspaces`.
+Its code uses only `db`, `web`, `mail` and `jobs` from this module, and `make check-deps` fails otherwise; keep workspace concerns such as memberships and invitations in `internal/workspaces`. Its handler tests run through `apptest`, the whole app, so they need adapting where that doesn't exist.
 
 ## Database access
 

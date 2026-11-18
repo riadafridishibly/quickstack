@@ -6,6 +6,7 @@
 package platform
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -60,10 +61,10 @@ var sections = []section{
 	{web.NavItem{Label: "Media", Href: "/admin/media"}, auth.ManageBlog},
 }
 
-func navItems(role auth.PlatformRole) []web.NavItem {
+func navItems(ctx context.Context) []web.NavItem {
 	var items []web.NavItem
 	for _, s := range sections {
-		if auth.Platform.Can(role, s.action) {
+		if auth.Platform.CanIn(ctx, s.action) {
 			items = append(items, s.item)
 		}
 	}
@@ -78,9 +79,8 @@ type homeView struct {
 // home is the overview. Staff who may not see it go to the first section
 // they may open.
 func (h handler) home(w http.ResponseWriter, r *http.Request) error {
-	role := auth.From(r.Context()).PlatformRole
-	if !auth.Platform.Can(role, auth.ViewAccounts) {
-		items := navItems(role)
+	if !auth.Platform.CanIn(r.Context(), auth.ViewAccounts) {
+		items := navItems(r.Context())
 		if len(items) == 0 {
 			return web.ErrForbidden
 		}
