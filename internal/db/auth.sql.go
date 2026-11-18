@@ -186,13 +186,16 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context, accountID int64) er
 	return err
 }
 
-const deleteLoginChallenge = `-- name: DeleteLoginChallenge :exec
+const deleteLoginChallenge = `-- name: DeleteLoginChallenge :execrows
 DELETE FROM login_challenges WHERE token_hash = $1
 `
 
-func (q *Queries) DeleteLoginChallenge(ctx context.Context, tokenHash []byte) error {
-	_, err := q.db.Exec(ctx, deleteLoginChallenge, tokenHash)
-	return err
+func (q *Queries) DeleteLoginChallenge(ctx context.Context, tokenHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLoginChallenge, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteOtherSessions = `-- name: DeleteOtherSessions :execrows

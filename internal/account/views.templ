@@ -43,7 +43,9 @@ type profileView struct {
 	Email    string
 	Verified bool
 	Error    string
-	Message  string
+	// VerifyError is shown on the form that sends a verification link.
+	VerifyError string
+	Message     string
 }
 
 templ profilePage(v profileView) {
@@ -69,6 +71,9 @@ templ profilePage(v profileView) {
 		</form>
 		if !v.Verified {
 			<form method="post" action={ templ.SafeURL(profilePath + "/verify-email") } class={ web.PaddedCardClass, "mt-6 max-w-xl space-y-3" }>
+				if v.VerifyError != "" {
+					<p role="alert" class="alert alert-error alert-soft">{ v.VerifyError }</p>
+				}
 				<p class="text-sm">Verify your email to show it belongs to you. We’ll send a link to { v.Email }.</p>
 				<button type="submit" class={ web.SecondaryButtonClass }>Send verification link</button>
 			</form>

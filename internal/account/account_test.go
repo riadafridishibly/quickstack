@@ -93,7 +93,11 @@ func TestSendVerification(t *testing.T) {
 	}
 	s.Post("/account/verify-email", c, url.Values{})
 	s.Post("/account/verify-email", c, url.Values{})
-	apptest.Status(t, s.Post("/account/verify-email", c, url.Values{}), http.StatusTooManyRequests)
+	w = s.Post("/account/verify-email", c, url.Values{})
+	apptest.Status(t, w, http.StatusTooManyRequests)
+	if strings.Contains(w.Body.String(), `aria-invalid="true"`) {
+		t.Error("the rate-limit message marks a field invalid")
+	}
 
 	_, verified := authtest.SignIn(t, s.Pool, "bo@example.com")
 	apptest.Redirect(t, s.Post("/account/verify-email", verified, url.Values{}), "/account")

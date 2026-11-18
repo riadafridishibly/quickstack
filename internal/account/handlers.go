@@ -67,7 +67,7 @@ func (h handler) sendVerification(w http.ResponseWriter, r *http.Request) error 
 	case errors.Is(err, auth.ErrEmailVerified):
 		web.Redirect(w, r, profilePath)
 	case errors.Is(err, auth.ErrTooManyAttempts):
-		v := profileView{Name: u.Name, Email: u.Email, Error: "We sent several links already. Wait a few minutes and try again."}
+		v := profileView{Name: u.Name, Email: u.Email, VerifyError: "We sent several links already. Wait a few minutes and try again."}
 		return web.Render(w, r, http.StatusTooManyRequests, profilePage(v))
 	case err != nil:
 		return err

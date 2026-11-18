@@ -114,8 +114,9 @@ func New(pool *pgxpool.Pool, jc *jobs.Client, publicURL string) *Auth {
 		byAccount: web.NewLimiter(time.Minute, 5),
 		signups:   web.NewLimiter(time.Minute, 10),
 		verifies:  web.NewLimiter(5*time.Minute, 3),
-		// A six-digit code would take years to guess at this rate.
-		factorTries: web.NewLimiter(time.Minute, 10),
+		// After the first ten, one try every ten minutes: guessing a six-digit
+		// code that accepts the codes on either side of now takes years.
+		factorTries: web.NewLimiter(10*time.Minute, 10),
 	}
 }
 

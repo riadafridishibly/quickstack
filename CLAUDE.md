@@ -103,7 +103,7 @@ How signing in fits together:
 - Every sign-in page ends its first factor (a password, a reset link) with `signIn`. With no second factor it starts a session at `AAL1`; otherwise it stores a `login_challenges` row, not a session, and `/login/verify` asks for a factor before starting one at `AAL2`.
 - A second factor implements `auth.Factor` in its own file and is added in `app.go` with `a.AddFactor(...)`. The core never names a factor's types.
 - `accounts.password_hash` is NULL for an account that signs in only another way. Sign-up mails a verification link; `User.EmailVerified` says whether the address is proven. A password reset link proves it too.
-- Pages that change how someone signs in go behind `auth.RequireRecent`, which sends a user who hasn't signed in or confirmed in the last 15 minutes to `/confirm` first.
+- Pages that add or remove a sign-in method, such as setting up an authenticator app, go behind `auth.RequireRecent`, which sends a user who hasn't signed in or confirmed in the last 15 minutes to `/confirm` first. Changing the password asks for the current one instead.
 
 ## Database access
 

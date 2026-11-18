@@ -117,7 +117,7 @@ UPDATE login_challenges SET attempts = attempts + 1
 WHERE token_hash = @token_hash AND expires_at > now() AND attempts < @max_attempts
 RETURNING account_id, next;
 
--- name: DeleteLoginChallenge :exec
+-- name: DeleteLoginChallenge :execrows
 DELETE FROM login_challenges WHERE token_hash = @token_hash;
 
 -- name: PurgeExpiredLoginChallenges :execrows
