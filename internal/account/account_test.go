@@ -18,7 +18,7 @@ func TestChangePassword(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
 	id, c := authtest.SignIn(t, s.Pool, "ana@example.com")
-	token, err := auth.NewSession(t.Context(), db.New(s.Pool), id, "other device")
+	token, err := auth.NewSession(t.Context(), db.New(s.Pool), id, auth.AAL1, "other device")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestSessions(t *testing.T) {
 	s := apptest.New(t)
 	id, c := authtest.SignIn(t, s.Pool, "ana@example.com")
 	q := db.New(s.Pool)
-	token, err := auth.NewSession(t.Context(), q, id, "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0")
+	token, err := auth.NewSession(t.Context(), q, id, auth.AAL1, "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,5 +76,47 @@ func TestDevice(t *testing.T) {
 		if got := account.Device(ua); got != want {
 			t.Errorf("Device(%q) = %q, want %q", ua, got, want)
 		}
+	}
+}
+
+func TestSendVerification(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	w := s.Post("/signup", nil, url.Values{"name": {"Ana"}, "email": {"ana@example.com"}, "password": {"long enough password"}})
+	c := apptest.Cookie(t, w)
+	if !strings.Contains(s.Get("/account", c).Body.String(), "Not verified") {
+		t.Error("profile doesn't say the email isn't verified")
+	}
+	apptest.Redirect(t, s.Post("/account/verify-email", c, url.Values{}), "/account?done=sent")
+	if n := len(s.Mail()); n != 2 {
+		t.Errorf("%d mails, want 2", n)
+	}
+	s.Post("/account/verify-email", c, url.Values{})
+	s.Post("/account/verify-email", c, url.Values{})
+	w = s.Post("/account/verify-email", c, url.Values{})
+	apptest.Status(t, w, http.StatusTooManyRequests)
+	if strings.Contains(w.Body.String(), `aria-invalid="true"`) {
+		t.Error("the rate-limit message marks a field invalid")
+	}
+
+	_, verified := authtest.SignIn(t, s.Pool, "bo@example.com")
+	apptest.Redirect(t, s.Post("/account/verify-email", verified, url.Values{}), "/account")
+}
+
+func TestSecurityWithoutPassword(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	q := db.New(s.Pool)
+	acc, err := q.CreateAccount(t.Context(), db.CreateAccountParams{Email: "ana@example.com", Name: "Ana"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.NewSession(t.Context(), q, acc.ID, auth.AAL1, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := s.Get("/account/security", &http.Cookie{Name: auth.CookieName, Value: token}).Body.String()
+	if !strings.Contains(body, "Set a password") || strings.Contains(body, "Current password") {
+		t.Errorf("security page of an account without a password:\n%s", body)
 	}
 }

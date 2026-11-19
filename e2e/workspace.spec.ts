@@ -10,7 +10,7 @@ test("invite someone, who signs up from the email and joins", async ({ page, bro
   await expect(page.getByText("Invitation sent to bo@example.com.")).toBeVisible();
   await expect(page.getByText("Waiting to accept")).toBeVisible();
 
-  const link = await mailLink(page, "bo@example.com");
+  const link = await mailLink(page, "bo@example.com", "invited");
   const bo = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const p = await bo.newPage();
   await p.goto(link);

@@ -1,6 +1,6 @@
 // Package auth signs people in: accounts, password hashing, sessions, the
-// sign-in, sign-up and password reset pages, and the workspace and platform
-// roles.
+// sign-in, sign-up, password reset and email verification pages, second
+// factors, and the workspace and platform roles.
 package auth
 
 import (
@@ -46,13 +46,27 @@ var (
 	ErrNoAccount       = errors.New("auth: no account with that email")
 )
 
+// AAL is how sure a session is of who holds it: AAL1 after one factor, such
+// as a password, and AAL2 after two.
+type AAL int16
+
+const (
+	AAL1 AAL = 1
+	AAL2 AAL = 2
+)
+
 type User struct {
-	ID           int64
-	Email        string
-	Name         string
-	PlatformRole PlatformRole
-	SessionID    int64
-	tokenHash    []byte
+	ID            int64
+	Email         string
+	EmailVerified bool
+	Name          string
+	PlatformRole  PlatformRole
+	SessionID     int64
+	AAL           AAL
+	// AuthenticatedAt is when the user last proved who they are: at sign-in,
+	// or on the confirm page.
+	AuthenticatedAt time.Time
+	tokenHash       []byte
 }
 
 type ctxKey struct{}
@@ -80,6 +94,11 @@ type Auth struct {
 	byEmail   *web.Limiter
 	byAccount *web.Limiter
 	signups   *web.Limiter
+	verifies  *web.Limiter
+	// factorTries is per account, so starting new challenges doesn't give a
+	// guesser more tries at a second factor.
+	factorTries *web.Limiter
+	factors     []Factor
 }
 
 // New returns an Auth. publicURL is the origin that links in email point to.
@@ -94,6 +113,10 @@ func New(pool *pgxpool.Pool, jc *jobs.Client, publicURL string) *Auth {
 		byEmail:   web.NewLimiter(10*time.Second, 50),
 		byAccount: web.NewLimiter(time.Minute, 5),
 		signups:   web.NewLimiter(time.Minute, 10),
+		verifies:  web.NewLimiter(5*time.Minute, 3),
+		// After the first ten, one try every ten minutes: guessing a six-digit
+		// code that accepts the codes on either side of now takes years.
+		factorTries: web.NewLimiter(10*time.Minute, 10),
 	}
 }
 
@@ -107,6 +130,12 @@ func (a *Auth) Routes(mux *http.ServeMux) {
 	mux.Handle("POST "+forgotPath, web.Handle(a.forgot))
 	mux.Handle("GET "+resetPath, web.Handle(a.resetForm))
 	mux.Handle("POST "+resetPath, web.Handle(a.reset))
+	mux.Handle("GET "+verifyEmailPath, web.Handle(a.verifyEmailForm))
+	mux.Handle("POST "+verifyEmailPath, web.Handle(a.verifyEmail))
+	mux.Handle("GET "+challengePath, web.Handle(a.challengeForm))
+	mux.Handle("POST "+challengePath, web.Handle(a.challenge))
+	mux.Handle("GET "+ConfirmPath, a.RequireLogin(web.Handle(a.confirmForm)))
+	mux.Handle("POST "+ConfirmPath, a.RequireLogin(web.Handle(a.confirm)))
 }
 
 // RequireLogin puts the signed-in user in the request context, or sends the
@@ -170,7 +199,10 @@ func (a *Auth) Load(w http.ResponseWriter, r *http.Request) (*User, error) {
 		}
 		SetCookie(w, c.Value)
 	}
-	u := &User{ID: row.ID, Email: row.Email, Name: row.Name, SessionID: row.SessionID, tokenHash: hash}
+	u := &User{
+		ID: row.ID, Email: row.Email, EmailVerified: row.EmailVerifiedAt != nil, Name: row.Name,
+		SessionID: row.SessionID, AAL: AAL(row.Aal), AuthenticatedAt: row.AuthenticatedAt, tokenHash: hash,
+	}
 	if row.PlatformRole != nil {
 		u.PlatformRole = PlatformRole(*row.PlatformRole)
 	}
@@ -187,7 +219,11 @@ func (a *Auth) loginForm(w http.ResponseWriter, r *http.Request) error {
 		http.Redirect(w, r, next, http.StatusSeeOther)
 		return nil
 	}
-	return web.Render(w, r, http.StatusOK, loginPage(loginView{Next: next, Email: r.URL.Query().Get("email")}))
+	v := loginView{Next: next, Email: r.URL.Query().Get("email")}
+	if r.URL.Query().Has("expired") {
+		v.Error = "That sign-in took too long or had too many attempts. Start again."
+	}
+	return web.Render(w, r, http.StatusOK, loginPage(v))
 }
 
 func (a *Auth) login(w http.ResponseWriter, r *http.Request) error {
@@ -202,12 +238,12 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) error {
 	acc, err := a.q.GetAccountByEmail(r.Context(), v.Email)
 	ok := false
 	switch {
-	case errors.Is(err, pgx.ErrNoRows):
+	case errors.Is(err, pgx.ErrNoRows) || err == nil && acc.PasswordHash == nil:
 		spendHashTime(password)
 	case err != nil:
 		return err
 	default:
-		if ok, err = CheckPassword(acc.PasswordHash, password); err != nil {
+		if ok, err = CheckPassword(*acc.PasswordHash, password); err != nil {
 			return err
 		}
 	}
@@ -215,13 +251,7 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) error {
 		v.Error = "Email or password is incorrect."
 		return web.Render(w, r, http.StatusUnprocessableEntity, loginPage(v))
 	}
-	token, err := NewSession(r.Context(), a.q, acc.ID, r.UserAgent())
-	if err != nil {
-		return err
-	}
-	SetCookie(w, token)
-	http.Redirect(w, r, v.Next, http.StatusSeeOther)
-	return nil
+	return a.signIn(w, r, acc.ID, v.Next)
 }
 
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) error {
@@ -277,7 +307,10 @@ func (a *Auth) signup(w http.ResponseWriter, r *http.Request) error {
 		if err := q.RecordAudit(r.Context(), db.RecordAuditParams{ActorID: &acc.ID, Action: "account.signup", Target: acc.Email}); err != nil {
 			return err
 		}
-		token, err = NewSession(r.Context(), q, acc.ID, r.UserAgent())
+		if err := a.sendVerification(r.Context(), tx, acc.ID, acc.Email); err != nil {
+			return err
+		}
+		token, err = NewSession(r.Context(), q, acc.ID, AAL1, r.UserAgent())
 		return err
 	})
 	if errors.Is(err, ErrEmailTaken) {
@@ -302,7 +335,10 @@ func (a *Auth) ChangePassword(ctx context.Context, u *User, current, next string
 	if err != nil {
 		return err
 	}
-	ok, err := CheckPassword(acc.PasswordHash, current)
+	if acc.PasswordHash == nil {
+		return ErrWrongPassword
+	}
+	ok, err := CheckPassword(*acc.PasswordHash, current)
 	if err != nil {
 		return err
 	}
@@ -315,7 +351,7 @@ func (a *Auth) ChangePassword(ctx context.Context, u *User, current, next string
 	}
 	return pgx.BeginTxFunc(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := db.New(tx)
-		if _, err := q.UpdateAccountPassword(ctx, db.UpdateAccountPasswordParams{ID: u.ID, PasswordHash: hash}); err != nil {
+		if _, err := q.UpdateAccountPassword(ctx, db.UpdateAccountPasswordParams{ID: u.ID, PasswordHash: &hash}); err != nil {
 			return err
 		}
 		if _, err := q.DeleteOtherSessions(ctx, db.DeleteOtherSessionsParams{AccountID: u.ID, TokenHash: u.tokenHash}); err != nil {
@@ -347,7 +383,7 @@ func ResetPassword(ctx context.Context, pool *pgxpool.Pool, email string) (strin
 		if err != nil {
 			return err
 		}
-		if _, err := q.UpdateAccountPassword(ctx, db.UpdateAccountPasswordParams{ID: acc.ID, PasswordHash: hash}); err != nil {
+		if _, err := q.UpdateAccountPassword(ctx, db.UpdateAccountPasswordParams{ID: acc.ID, PasswordHash: &hash}); err != nil {
 			return err
 		}
 		_, err = q.DeleteAccountSessions(ctx, acc.ID)
@@ -362,7 +398,7 @@ func CreateAccount(ctx context.Context, q *db.Queries, email, name, password str
 	if err != nil {
 		return db.Account{}, err
 	}
-	acc, err := q.CreateAccount(ctx, db.CreateAccountParams{Email: email, Name: name, PasswordHash: hash})
+	acc, err := q.CreateAccount(ctx, db.CreateAccountParams{Email: email, Name: name, PasswordHash: &hash})
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 		return acc, ErrEmailTaken
 	}
@@ -370,8 +406,9 @@ func CreateAccount(ctx context.Context, q *db.Queries, email, name, password str
 }
 
 // NewSession stores a session for the account and returns its token for
-// SetCookie.
-func NewSession(ctx context.Context, q *db.Queries, accountID int64, userAgent string) (string, error) {
+// SetCookie. Sign-in pages go through signIn, which asks for a second factor
+// first when the account has one.
+func NewSession(ctx context.Context, q *db.Queries, accountID int64, aal AAL, userAgent string) (string, error) {
 	if err := q.DeleteExpiredSessions(ctx, accountID); err != nil {
 		return "", err
 	}
@@ -379,6 +416,7 @@ func NewSession(ctx context.Context, q *db.Queries, accountID int64, userAgent s
 	err := q.CreateSession(ctx, db.CreateSessionParams{
 		TokenHash: hashToken(token),
 		AccountID: accountID,
+		Aal:       int16(aal),
 		UserAgent: truncate(userAgent, 300),
 		ExpiresAt: time.Now().Add(sessionTTL),
 	})

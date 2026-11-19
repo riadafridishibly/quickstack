@@ -143,3 +143,94 @@ templ resetExpiredPage() {
 		</div>
 	}
 }
+
+templ verifyEmailPage(token, email string) {
+	@web.Layout("Verify your email") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Verify your email</h1>
+			<form method="post" action={ templ.SafeURL(verifyEmailPath) } class={ web.PaddedCardClass, "space-y-5" }>
+				<p class="text-sm">Confirm that <strong class="break-all">{ email }</strong> is your address.</p>
+				<input type="hidden" name="token" value={ token }/>
+				<button type="submit" class={ web.ButtonClass, "w-full" }>Verify email</button>
+			</form>
+		</div>
+	}
+}
+
+templ emailVerifiedPage() {
+	@web.Layout("Email verified") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Email verified</h1>
+			<div class={ web.PaddedCardClass, "space-y-3 text-sm" }>
+				<p>Thanks. Your email address is verified.</p>
+				<p><a href={ templ.SafeURL(HomePath) } class={ web.LinkClass }>Continue</a></p>
+			</div>
+		</div>
+	}
+}
+
+templ verifyExpiredPage() {
+	@web.Layout("Link expired") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">This link has expired</h1>
+			<div class={ web.PaddedCardClass, "space-y-3 text-sm" }>
+				<p>Verification links work once, for three days. Sign in to send a new one from your profile.</p>
+				<p><a href={ templ.SafeURL(HomePath) } class={ web.LinkClass }>Sign in</a></p>
+			</div>
+		</div>
+	}
+}
+
+type challengeView struct {
+	Factors []Factor
+	// Failed names the factor whose Verify failed, which shows Error.
+	Failed string
+	Error  string
+}
+
+templ challengePage(v challengeView) {
+	@web.Layout("Verify it’s you") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Verify it’s you</h1>
+			<div class="space-y-4">
+				for i, f := range v.Factors {
+					if i > 0 {
+						<p class="text-center text-sm opacity-70">or</p>
+					}
+					<form method="post" action={ templ.SafeURL(challengePath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+						<input type="hidden" name="factor" value={ f.Name() }/>
+						if f.Name() == v.Failed {
+							@f.Form(v.Error)
+						} else {
+							@f.Form("")
+						}
+					</form>
+				}
+			</div>
+			<p class="mt-6 text-center text-sm opacity-80">
+				<a href={ templ.SafeURL(LoginPath) } class={ web.LinkClass }>Start over</a>
+			</p>
+		</div>
+	}
+}
+
+templ confirmPage(v confirmView) {
+	@web.Layout("Confirm it’s you") {
+		<div class="mx-auto max-w-sm">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Confirm it’s you</h1>
+			if v.HasPassword {
+				<form method="post" action={ templ.SafeURL(ConfirmPath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+					<p class="text-sm opacity-80">Enter your password to continue.</p>
+					<input type="hidden" name="next" value={ v.Next }/>
+					@web.Field("Password", "password", v.Error) {
+						<input type="password" { web.InputAttrs("password", v.Error)... } autocomplete="current-password" required autofocus class={ web.InputClass }/>
+					}
+					<button type="submit" class={ web.ButtonClass, "w-full" }>Continue</button>
+				</form>
+			}
+			<form method="post" action={ templ.SafeURL(LogoutPath) } class="mt-6 text-center text-sm opacity-80">
+				Or <button type="submit" class={ web.LinkClass }>sign out</button> and sign in again.
+			</form>
+		</div>
+	}
+}

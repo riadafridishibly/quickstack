@@ -26,10 +26,13 @@ export { expect };
 export const owner = { name: "Olivia", email: "owner@example.com", password: "owner password 1" };
 export const workspace = { name: "Acme Robotics", slug: "acme-robotics" };
 
-// mailLink returns the link in the newest mail to `to`, from /dev/mail. A
-// background job sends mail, so the page is reloaded until it shows up.
-export async function mailLink(page: Page, to: string): Promise<string> {
-  const mail = page.locator("li", { has: page.locator(`[data-to="${to}"]`) }).first();
+// mailLink returns the link in the newest mail to `to` whose text contains
+// `about`, from /dev/mail. A background job sends mail, so the page is
+// reloaded until it shows up.
+export async function mailLink(page: Page, to: string, about: string): Promise<string> {
+  const mail = page
+    .locator("li", { has: page.locator(`[data-to="${to}"]`), hasText: about })
+    .first();
   await expect(async () => {
     await page.goto("/dev/mail");
     await expect(mail).toBeVisible({ timeout: 250 });

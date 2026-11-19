@@ -24,16 +24,21 @@ var hash = sync.OnceValue(func() string {
 	return h
 })
 
-// SignIn creates an account and returns its id and a session cookie.
+// SignIn creates an account with a verified email and returns its id and a
+// session cookie.
 func SignIn(t testing.TB, pool *pgxpool.Pool, email string) (int64, *http.Cookie) {
 	t.Helper()
 	ctx := t.Context()
 	q := db.New(pool)
-	acc, err := q.CreateAccount(ctx, db.CreateAccountParams{Email: email, Name: email, PasswordHash: hash()})
+	h := hash()
+	acc, err := q.CreateAccount(ctx, db.CreateAccountParams{Email: email, Name: email, PasswordHash: &h})
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := auth.NewSession(ctx, q, acc.ID, "test")
+	if err := q.MarkEmailVerified(ctx, acc.ID); err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.NewSession(ctx, q, acc.ID, auth.AAL1, "test")
 	if err != nil {
 		t.Fatal(err)
 	}

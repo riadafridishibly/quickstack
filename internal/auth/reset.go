@@ -98,14 +98,18 @@ func (a *Auth) reset(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	var session string
+	var id int64
 	err = pgx.BeginTxFunc(r.Context(), a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := db.New(tx)
-		id, err := q.TakePasswordReset(r.Context(), hashToken(v.Token))
-		if err != nil {
+		var err error
+		if id, err = q.TakePasswordReset(r.Context(), hashToken(v.Token)); err != nil {
 			return err
 		}
-		if _, err := q.UpdateAccountPassword(r.Context(), db.UpdateAccountPasswordParams{ID: id, PasswordHash: hash}); err != nil {
+		if _, err := q.UpdateAccountPassword(r.Context(), db.UpdateAccountPasswordParams{ID: id, PasswordHash: &hash}); err != nil {
+			return err
+		}
+		// The link came by email, so it proves the address too.
+		if err := q.MarkEmailVerified(r.Context(), id); err != nil {
 			return err
 		}
 		if err := q.DeletePasswordResets(r.Context(), id); err != nil {
@@ -114,11 +118,7 @@ func (a *Auth) reset(w http.ResponseWriter, r *http.Request) error {
 		if _, err := q.DeleteAccountSessions(r.Context(), id); err != nil {
 			return err
 		}
-		if err := q.RecordAudit(r.Context(), db.RecordAuditParams{ActorID: &id, Action: "account.password_reset"}); err != nil {
-			return err
-		}
-		session, err = NewSession(r.Context(), q, id, r.UserAgent())
-		return err
+		return q.RecordAudit(r.Context(), db.RecordAuditParams{ActorID: &id, Action: "account.password_reset"})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return web.Render(w, r, http.StatusNotFound, resetExpiredPage())
@@ -126,13 +126,11 @@ func (a *Auth) reset(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	SetCookie(w, session)
-	web.Redirect(w, r, HomePath)
-	return nil
+	return a.signIn(w, r, id, HomePath)
 }
 
-// CleanupArgs is the daily job that deletes expired sessions and password
-// resets.
+// CleanupArgs is the daily job that deletes expired sessions, password
+// resets, email verifications and login challenges.
 type CleanupArgs struct{}
 
 func (CleanupArgs) Kind() string { return "auth_cleanup" }
@@ -143,11 +141,17 @@ type cleanupWorker struct {
 }
 
 func (w *cleanupWorker) Work(ctx context.Context, _ *river.Job[CleanupArgs]) error {
-	if _, err := w.q.PurgeExpiredSessions(ctx); err != nil {
-		return err
+	for _, purge := range []func(context.Context) (int64, error){
+		w.q.PurgeExpiredSessions,
+		w.q.PurgeExpiredPasswordResets,
+		w.q.PurgeExpiredEmailVerifications,
+		w.q.PurgeExpiredLoginChallenges,
+	} {
+		if _, err := purge(ctx); err != nil {
+			return err
+		}
 	}
-	_, err := w.q.PurgeExpiredPasswordResets(ctx)
-	return err
+	return nil
 }
 
 // AddWorkers registers the cleanup worker and returns its daily schedule.

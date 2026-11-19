@@ -8,6 +8,7 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/apptest"
 	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
+	"github.com/riadafridishibly/quickstack/internal/db"
 )
 
 func login(email, password, next string) url.Values {
@@ -41,6 +42,15 @@ func TestLogin(t *testing.T) {
 	apptest.Redirect(t, s.Get("/w", c), "/login?next=%2Fw")
 }
 
+func TestLoginWithoutPassword(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	if _, err := db.New(s.Pool).CreateAccount(t.Context(), db.CreateAccountParams{Email: "ana@example.com", Name: "Ana"}); err != nil {
+		t.Fatal(err)
+	}
+	apptest.Status(t, s.Post("/login", nil, login("ana@example.com", "", "/w")), http.StatusUnprocessableEntity)
+}
+
 func TestLoginRateLimit(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
@@ -66,6 +76,9 @@ func TestSignup(t *testing.T) {
 	w = s.Post("/signup", nil, form)
 	apptest.Redirect(t, w, "/invite/x")
 	apptest.Status(t, s.Get("/w", apptest.Cookie(t, w)), http.StatusOK)
+	if msgs := s.Mail(); len(msgs) != 1 || !strings.Contains(msgs[0].Subject, "Verify your email") {
+		t.Errorf("mail after sign-up: %+v", msgs)
+	}
 
 	w = s.Post("/signup", nil, form)
 	apptest.Status(t, w, http.StatusUnprocessableEntity)
@@ -105,4 +118,41 @@ func TestPasswordReset(t *testing.T) {
 	apptest.Redirect(t, s.Get("/w", old), "/login?next=%2Fw")
 	apptest.Status(t, s.Get(link, nil), http.StatusNotFound)
 	apptest.Redirect(t, s.Post("/login", nil, login("ana@example.com", "a new password", "/w")), "/w")
+}
+
+func TestVerifyEmail(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	w := s.Post("/signup", nil, url.Values{"name": {"Ana"}, "email": {"ana@example.com"}, "password": {"long enough password"}})
+	apptest.Redirect(t, w, "/w")
+	link := s.Link("ana@example.com")
+	token, _ := url.QueryUnescape(strings.TrimPrefix(link, "/verify-email?token="))
+
+	// Opening the link changes nothing; the button does.
+	if body := s.Get(link, nil).Body.String(); !strings.Contains(body, "Verify email") {
+		t.Fatalf("verification page:\n%s", body)
+	}
+	acc, err := db.New(s.Pool).GetAccountByEmail(t.Context(), "ana@example.com")
+	if err != nil || acc.EmailVerifiedAt != nil {
+		t.Fatalf("verified before the button: %+v, %v", acc, err)
+	}
+	apptest.Redirect(t, s.Post("/verify-email", nil, url.Values{"token": {token}}), "/verify-email?done=1")
+	if acc, _ = db.New(s.Pool).GetAccountByEmail(t.Context(), "ana@example.com"); acc.EmailVerifiedAt == nil {
+		t.Error("email not verified")
+	}
+	apptest.Status(t, s.Get(link, nil), http.StatusNotFound)
+	apptest.Status(t, s.Post("/verify-email", nil, url.Values{"token": {token}}), http.StatusNotFound)
+}
+
+func TestPasswordResetVerifiesEmail(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	apptest.Redirect(t, s.Post("/signup", nil, url.Values{"name": {"Ana"}, "email": {"ana@example.com"}, "password": {"long enough password"}}), "/w")
+	s.Post("/forgot-password", nil, url.Values{"email": {"ana@example.com"}})
+	token, _ := url.QueryUnescape(strings.TrimPrefix(s.Link("ana@example.com"), "/reset-password?token="))
+	w := s.Post("/reset-password", nil, url.Values{"token": {token}, "password": {"a new password"}, "confirm_password": {"a new password"}})
+	apptest.Redirect(t, w, "/w")
+	if body := s.Get("/account", apptest.Cookie(t, w)).Body.String(); !strings.Contains(body, ">Verified<") {
+		t.Error("a reset from the email doesn't verify it")
+	}
 }

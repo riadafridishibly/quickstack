@@ -9,13 +9,14 @@ import (
 )
 
 type Account struct {
-	ID           int64
-	Email        string
-	Name         string
-	PasswordHash string
-	PlatformRole *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID              int64
+	Email           string
+	EmailVerifiedAt *time.Time
+	Name            string
+	PasswordHash    *string
+	PlatformRole    *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type Asset struct {
@@ -44,6 +45,14 @@ type AuditLog struct {
 	Target      string
 }
 
+type EmailVerification struct {
+	TokenHash []byte
+	AccountID int64
+	Email     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Invitation struct {
 	WorkspaceID int64
 	ID          int64
@@ -53,6 +62,15 @@ type Invitation struct {
 	InvitedBy   *int64
 	CreatedAt   time.Time
 	ExpiresAt   time.Time
+}
+
+type LoginChallenge struct {
+	TokenHash []byte
+	AccountID int64
+	Next      string
+	Attempts  int32
+	CreatedAt time.Time
+	ExpiresAt time.Time
 }
 
 type Membership struct {
@@ -106,13 +124,15 @@ type Project struct {
 }
 
 type Session struct {
-	TokenHash  []byte
-	ID         int64
-	AccountID  int64
-	UserAgent  string
-	CreatedAt  time.Time
-	LastSeenAt time.Time
-	ExpiresAt  time.Time
+	TokenHash       []byte
+	ID              int64
+	AccountID       int64
+	Aal             int16
+	UserAgent       string
+	CreatedAt       time.Time
+	AuthenticatedAt time.Time
+	LastSeenAt      time.Time
+	ExpiresAt       time.Time
 }
 
 type Task struct {
