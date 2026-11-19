@@ -36,12 +36,31 @@ func (q *Queries) AttemptLoginChallenge(ctx context.Context, arg AttemptLoginCha
 }
 
 const confirmSession = `-- name: ConfirmSession :exec
-UPDATE sessions SET authenticated_at = now() WHERE token_hash = $1
+UPDATE sessions SET authenticated_at = now(), aal = greatest(aal, $1::smallint)
+WHERE token_hash = $2
 `
 
-func (q *Queries) ConfirmSession(ctx context.Context, tokenHash []byte) error {
-	_, err := q.db.Exec(ctx, confirmSession, tokenHash)
+type ConfirmSessionParams struct {
+	Aal       int16
+	TokenHash []byte
+}
+
+// ConfirmSession records that the user proved who they are, with a second
+// factor when aal is 2.
+func (q *Queries) ConfirmSession(ctx context.Context, arg ConfirmSessionParams) error {
+	_, err := q.db.Exec(ctx, confirmSession, arg.Aal, arg.TokenHash)
 	return err
+}
+
+const countRecoveryCodes = `-- name: CountRecoveryCodes :one
+SELECT count(*) FROM recovery_codes WHERE account_id = $1 AND used_at IS NULL
+`
+
+func (q *Queries) CountRecoveryCodes(ctx context.Context, accountID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecoveryCodes, accountID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createAccount = `-- name: CreateAccount :one
@@ -129,6 +148,21 @@ type CreatePasswordResetParams struct {
 
 func (q *Queries) CreatePasswordReset(ctx context.Context, arg CreatePasswordResetParams) error {
 	_, err := q.db.Exec(ctx, createPasswordReset, arg.TokenHash, arg.AccountID, arg.ExpiresAt)
+	return err
+}
+
+const createRecoveryCodes = `-- name: CreateRecoveryCodes :exec
+INSERT INTO recovery_codes (account_id, code_hash)
+SELECT $1, unnest($2::bytea[])
+`
+
+type CreateRecoveryCodesParams struct {
+	AccountID  int64
+	CodeHashes [][]byte
+}
+
+func (q *Queries) CreateRecoveryCodes(ctx context.Context, arg CreateRecoveryCodesParams) error {
+	_, err := q.db.Exec(ctx, createRecoveryCodes, arg.AccountID, arg.CodeHashes)
 	return err
 }
 
@@ -221,6 +255,15 @@ DELETE FROM password_resets WHERE account_id = $1
 
 func (q *Queries) DeletePasswordResets(ctx context.Context, accountID int64) error {
 	_, err := q.db.Exec(ctx, deletePasswordResets, accountID)
+	return err
+}
+
+const deleteRecoveryCodes = `-- name: DeleteRecoveryCodes :exec
+DELETE FROM recovery_codes WHERE account_id = $1
+`
+
+func (q *Queries) DeleteRecoveryCodes(ctx context.Context, accountID int64) error {
+	_, err := q.db.Exec(ctx, deleteRecoveryCodes, accountID)
 	return err
 }
 
@@ -562,6 +605,24 @@ type UpdateAccountPasswordParams struct {
 
 func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateAccountPassword, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const useRecoveryCode = `-- name: UseRecoveryCode :execrows
+UPDATE recovery_codes SET used_at = now()
+WHERE account_id = $1 AND code_hash = $2 AND used_at IS NULL
+`
+
+type UseRecoveryCodeParams struct {
+	AccountID int64
+	CodeHash  []byte
+}
+
+func (q *Queries) UseRecoveryCode(ctx context.Context, arg UseRecoveryCodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, useRecoveryCode, arg.AccountID, arg.CodeHash)
 	if err != nil {
 		return 0, err
 	}

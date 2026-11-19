@@ -62,6 +62,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if cfg.SecretKey == nil {
+		return config.ErrNoSecretKey
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -94,6 +97,7 @@ func run() error {
 	}
 	h, err := app.New(app.Config{
 		ViteURL: cfg.ViteURL, TrustedProxies: cfg.TrustedProxies, PublicURL: cfg.PublicURL, Jobs: jc, Outbox: outbox, Blob: store,
+		SecretKey: cfg.SecretKey,
 	}, pool)
 	if err != nil {
 		return err

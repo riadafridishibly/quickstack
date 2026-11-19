@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -99,11 +100,15 @@ type Auth struct {
 	// guesser more tries at a second factor.
 	factorTries *web.Limiter
 	factors     []Factor
+	recovery    recoveryCodes
+	// Layout frames the pages factors add under SecurityPath, such as
+	// setting up an authenticator app. New sets web.Layout.
+	Layout func(title string) templ.Component
 }
 
 // New returns an Auth. publicURL is the origin that links in email point to.
 func New(pool *pgxpool.Pool, jc *jobs.Client, publicURL string) *Auth {
-	return &Auth{
+	a := &Auth{
 		pool:      pool,
 		q:         db.New(pool),
 		jobs:      jc,
@@ -117,7 +122,10 @@ func New(pool *pgxpool.Pool, jc *jobs.Client, publicURL string) *Auth {
 		// After the first ten, one try every ten minutes: guessing a six-digit
 		// code that accepts the codes on either side of now takes years.
 		factorTries: web.NewLimiter(10*time.Minute, 10),
+		Layout:      web.Layout,
 	}
+	a.recovery = recoveryCodes{a: a}
+	return a
 }
 
 func (a *Auth) Routes(mux *web.Mux) {

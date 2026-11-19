@@ -38,7 +38,7 @@ func TestRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, rs, err := build(Config{ViteURL: "http://localhost:8361", PublicURL: "http://example.test", Blob: store}, testdb.New(t))
+	_, rs, err := build(Config{ViteURL: "http://localhost:8361", PublicURL: "http://example.test", Blob: store, SecretKey: make([]byte, auth.KeySize)}, testdb.New(t))
 	if err != nil {
 		t.Fatal(err)
 	}

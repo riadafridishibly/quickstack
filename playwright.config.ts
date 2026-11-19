@@ -27,6 +27,9 @@ export default defineConfig({
       // Mail goes to /dev/mail, where the specs read invitation and reset links.
       QUICKSTACK_MAIL_OUTBOX: "1",
       QUICKSTACK_BLOB_URL: "file://./tmp/e2e-media",
+      // Lets a spec send X-Forwarded-For to look like another client.
+      QUICKSTACK_TRUSTED_PROXIES: "127.0.0.1,::1",
+      QUICKSTACK_SECRET_KEY: "ZTJlIHRlc3RzIHNlYWwgc2VjcmV0cyB3aXRoIHRoaXM=",
     },
     url: `http://localhost:${port}/healthz`,
     reuseExistingServer: false,

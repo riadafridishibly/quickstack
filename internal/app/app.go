@@ -40,6 +40,9 @@ type Config struct {
 	Outbox *mail.Outbox
 	// Blob holds uploaded files.
 	Blob blob.Store
+	// SecretKey seals secrets the database holds, such as authenticator
+	// app keys. It is auth.KeySize bytes.
+	SecretKey []byte
 }
 
 func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
@@ -58,6 +61,9 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	if cfg.Blob == nil {
 		return nil, routes{}, errors.New("app: no blob store")
 	}
+	if len(cfg.SecretKey) != auth.KeySize {
+		return nil, routes{}, errors.New("app: the secret key must be 32 bytes")
+	}
 	assets, err := web.NewAssets(cfg.ViteURL)
 	if err != nil {
 		return nil, routes{}, err
@@ -69,6 +75,8 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	}
 	tdb := tenant.NewDB(pool)
 	a := auth.New(pool, cfg.Jobs, cfg.PublicURL)
+	a.Layout = account.Layout
+	a.AddFactor(auth.NewTOTP(a, cfg.SecretKey))
 	notFound := web.Handle(func(http.ResponseWriter, *http.Request) error { return web.ErrNotFound })
 
 	// Inside one workspace, behind workspaces.Middleware.
@@ -90,6 +98,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	// Everything that needs a signed-in user.
 	signedIn := web.NewMux("signed in: /account, /w and /admin, through auth.RequireLogin")
 	account.Routes(signedIn, a, pool)
+	a.SecurityRoutes(signedIn)
 	workspaces.Routes(signedIn, pool, cfg.Jobs, cfg.PublicURL)
 	inWorkspace := workspaces.Middleware(pool)(ws)
 	signedIn.Handle("/w/{ws}", inWorkspace)

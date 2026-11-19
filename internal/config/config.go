@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -35,6 +37,9 @@ type Config struct {
 	// BlobURL is where uploaded files go: file:///dir or
 	// s3://key:secret@bucket/prefix?endpoint=host:port (see blob.Open).
 	BlobURL string
+	// SecretKey seals secrets the database holds, such as authenticator
+	// app keys: 32 bytes, given in base64. Changing it makes them unreadable.
+	SecretKey []byte
 }
 
 func Load() (Config, error) {
@@ -66,6 +71,12 @@ func Load() (Config, error) {
 			c.BlobURL = "file://./tmp/media"
 		}
 	}
+	if c.SecretKey, err = parseKey(os.Getenv("QUICKSTACK_SECRET_KEY")); err != nil {
+		return c, fmt.Errorf("QUICKSTACK_SECRET_KEY: %w", err)
+	}
+	if c.SecretKey == nil && c.ViteURL != "" {
+		c.SecretKey = devSecretKey[:]
+	}
 	public := os.Getenv("QUICKSTACK_PUBLIC_URL")
 	if public == "" {
 		public = defaultPublicURL(c.Addr, c.ViteURL != "")
@@ -74,6 +85,27 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("QUICKSTACK_PUBLIC_URL: %w", err)
 	}
 	return c, nil
+}
+
+// ErrNoSecretKey is returned by commands that need QUICKSTACK_SECRET_KEY,
+// such as serve, when it isn't set.
+var ErrNoSecretKey = errors.New("QUICKSTACK_SECRET_KEY is required: 32 random bytes in base64, such as from `openssl rand -base64 32`")
+
+// devSecretKey is the key in development, so `make dev` needs no setup.
+var devSecretKey = sha256.Sum256([]byte("quickstack development secret key"))
+
+func parseKey(s string) ([]byte, error) {
+	if s == "" {
+		return nil, nil
+	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(s))
+	if err != nil {
+		return nil, errors.New("not base64")
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("%d bytes, want 32", len(key))
+	}
+	return key, nil
 }
 
 // defaultPublicURL is the listen address as an http origin. In dev, pages

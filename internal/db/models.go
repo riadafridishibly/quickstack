@@ -123,6 +123,13 @@ type Project struct {
 	UpdatedAt   time.Time
 }
 
+type RecoveryCode struct {
+	AccountID int64
+	CodeHash  []byte
+	UsedAt    *time.Time
+	CreatedAt time.Time
+}
+
 type Session struct {
 	TokenHash       []byte
 	ID              int64
@@ -147,6 +154,13 @@ type Task struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time
+}
+
+type TotpCredential struct {
+	AccountID int64
+	Secret    []byte
+	LastStep  int64
+	CreatedAt time.Time
 }
 
 type Workspace struct {
