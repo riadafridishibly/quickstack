@@ -47,9 +47,11 @@ func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
 	return h, err
 }
 
-// routes are the workspace and admin routes with the action each requires.
+// routes are the app's muxes, in the order a request reaches them, and the
+// action each workspace and admin pattern requires.
 type routes struct {
-	workspace, admin []auth.Route
+	muxes   []*web.Mux
+	actions map[*web.Mux]map[string]string
 }
 
 func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
@@ -70,7 +72,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	notFound := web.Handle(func(http.ResponseWriter, *http.Request) error { return web.ErrNotFound })
 
 	// Inside one workspace, behind workspaces.Middleware.
-	ws := http.NewServeMux()
+	ws := web.NewMux("workspace: /w/{ws}, through workspaces.Middleware")
 	wsr := auth.Workspace.Router(ws)
 	insights.Routes(wsr, tdb)
 	projects.Routes(wsr, tdb)
@@ -78,7 +80,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	ws.Handle("/", notFound)
 
 	// The platform admin, for staff only.
-	adm := http.NewServeMux()
+	adm := web.NewMux("admin: /admin, through open_admin")
 	admr := auth.Platform.Router(adm)
 	platform.Routes(admr, pool)
 	blog.AdminRoutes(admr, pool)
@@ -86,7 +88,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	adm.Handle("/", notFound)
 
 	// Everything that needs a signed-in user.
-	signedIn := http.NewServeMux()
+	signedIn := web.NewMux("signed in: /account, /w and /admin, through auth.RequireLogin")
 	account.Routes(signedIn, a, pool)
 	workspaces.Routes(signedIn, pool, cfg.Jobs, cfg.PublicURL)
 	inWorkspace := workspaces.Middleware(pool)(ws)
@@ -99,22 +101,22 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	requireLogin := a.RequireLogin(signedIn)
 
 	// Pages anyone can open, which show more to a signed-in user.
-	open := http.NewServeMux()
+	open := web.NewMux("open: the rest of root, through auth.OptionalLogin")
 	public.Routes(open, pool, tdb)
 	blog.Routes(open, pool, cfg.PublicURL)
 	workspaces.InviteRoutes(open, pool, cfg.Jobs, cfg.PublicURL)
 	open.Handle("/", notFound)
 
-	mux := http.NewServeMux()
+	mux := web.NewMux("root")
 	mux.Handle("GET /static/assets/", web.StaticHandler())
 	media.Routes(mux, cfg.Blob)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = w.Write([]byte("ok"))
-	})
+	}))
 	if cfg.Outbox != nil {
 		mux.Handle("GET /dev/mail", cfg.Outbox.Handler())
 	}
@@ -124,6 +126,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	}
 	mux.Handle("/", a.OptionalLogin(open))
 
+	muxes := []*web.Mux{mux, open, signedIn, ws, adm}
 	var h http.Handler = mux
 	h = web.WithPath(h)
 	h = assets.Middleware(h)
@@ -133,14 +136,14 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	h = web.Logger(h)
 	h = web.RealIP(cfg.TrustedProxies)(h)
 	h = web.Trace(func(r *http.Request) string {
-		for _, m := range []*http.ServeMux{mux, signedIn, ws, adm, open} {
+		for _, m := range muxes {
 			if _, p := m.Handler(r); p != "" && p != "/" && !isMount(p) {
 				return p
 			}
 		}
 		return r.Method + " (unrouted)"
 	})(h)
-	return h, routes{workspace: wsr.Routes(), admin: admr.Routes()}, nil
+	return h, routes{muxes: muxes, actions: map[*web.Mux]map[string]string{ws: wsr.Actions(), adm: admr.Actions()}}, nil
 }
 
 // isMount reports whether p is a pattern that hands the request on to

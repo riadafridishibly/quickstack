@@ -35,8 +35,8 @@ var variantRE = regexp.MustCompile(`^[1-9][0-9]{0,4}\.webp$`)
 // Routes serves asset files at /media/{key}/{file}: the WebP variants and
 // og.jpg. The original is never served; it keeps metadata such as where a
 // photo was taken. Register it outside the session middleware.
-func Routes(mux *http.ServeMux, store blob.Store) {
-	mux.Handle("GET /media/{key}/{file}", web.Handle(func(w http.ResponseWriter, r *http.Request) error {
+func Routes(mux *web.Mux, store blob.Store) {
+	mux.Get("/media/{key}/{file}", func(w http.ResponseWriter, r *http.Request) error {
 		key, name := r.PathValue("key"), r.PathValue("file")
 		contentType := "image/webp"
 		switch {
@@ -61,7 +61,7 @@ func Routes(mux *http.ServeMux, store blob.Store) {
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeContent(w, r, name, time.Time{}, f)
 		return nil
-	}))
+	})
 }
 
 type handler struct {
@@ -75,11 +75,11 @@ type handler struct {
 // images and edit their alt text and credit.
 func AdminRoutes(r *auth.PlatformRouter, pool *pgxpool.Pool, store blob.Store, jc *jobs.Client) {
 	h := handler{pool: pool, q: db.New(pool), store: store, jc: jc}
-	r.Handle("GET "+adminPath, auth.ManageBlog, h.list)
-	r.Handle("POST "+adminPath, auth.ManageBlog, h.upload)
-	r.Handle("GET "+adminPath+"/{key}", auth.ManageBlog, h.show)
-	r.Handle("POST "+adminPath+"/{key}", auth.ManageBlog, h.update)
-	r.Handle("POST "+adminPath+"/{key}/delete", auth.ManageBlog, h.delete)
+	r.Get("/admin/media", auth.ManageBlog, h.list)
+	r.Post("/admin/media", auth.ManageBlog, h.upload)
+	r.Get("/admin/media/{key}", auth.ManageBlog, h.show)
+	r.Post("/admin/media/{key}", auth.ManageBlog, h.update)
+	r.Post("/admin/media/{key}/delete", auth.ManageBlog, h.delete)
 }
 
 func assetURL(key string) string { return adminPath + "/" + key }

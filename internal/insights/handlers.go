@@ -23,7 +23,7 @@ type handler struct{ tdb *tenant.DB }
 
 func Routes(r *auth.WorkspaceRouter, tdb *tenant.DB) {
 	h := handler{tdb: tdb}
-	r.Handle("GET /w/{ws}", auth.AnyMember, h.overview)
+	r.Get("/w/{ws}", auth.AnyMember, h.overview)
 }
 
 type overviewView struct {

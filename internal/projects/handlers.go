@@ -23,19 +23,19 @@ type handler struct{ tdb *tenant.DB }
 
 func Routes(r *auth.WorkspaceRouter, tdb *tenant.DB) {
 	h := handler{tdb: tdb}
-	r.Handle("GET /w/{ws}/projects", auth.AnyMember, h.list)
-	r.Handle("GET /w/{ws}/projects/new", auth.ManageProjects, h.newProject)
-	r.Handle("POST /w/{ws}/projects", auth.ManageProjects, h.create)
-	r.Handle("GET /w/{ws}/projects/{id}", auth.AnyMember, h.show)
-	r.Handle("GET /w/{ws}/projects/{id}/edit", auth.ManageProjects, h.edit)
-	r.Handle("POST /w/{ws}/projects/{id}", auth.ManageProjects, h.update)
-	r.Handle("POST /w/{ws}/projects/{id}/delete", auth.ManageProjects, h.delete)
+	r.Get("/w/{ws}/projects", auth.AnyMember, h.list)
+	r.Get("/w/{ws}/projects/new", auth.ManageProjects, h.newProject)
+	r.Post("/w/{ws}/projects", auth.ManageProjects, h.create)
+	r.Get("/w/{ws}/projects/{id}", auth.AnyMember, h.show)
+	r.Get("/w/{ws}/projects/{id}/edit", auth.ManageProjects, h.edit)
+	r.Post("/w/{ws}/projects/{id}", auth.ManageProjects, h.update)
+	r.Post("/w/{ws}/projects/{id}/delete", auth.ManageProjects, h.delete)
 
-	r.Handle("POST /w/{ws}/projects/{id}/tasks", auth.EditTasks, h.createTask)
-	r.Handle("GET /w/{ws}/projects/{id}/tasks/{task}", auth.EditTasks, h.editTask)
-	r.Handle("POST /w/{ws}/projects/{id}/tasks/{task}", auth.EditTasks, h.updateTask)
-	r.Handle("POST /w/{ws}/projects/{id}/tasks/{task}/move", auth.EditTasks, h.moveTask)
-	r.Handle("POST /w/{ws}/projects/{id}/tasks/{task}/delete", auth.EditTasks, h.deleteTask)
+	r.Post("/w/{ws}/projects/{id}/tasks", auth.EditTasks, h.createTask)
+	r.Get("/w/{ws}/projects/{id}/tasks/{task}", auth.EditTasks, h.editTask)
+	r.Post("/w/{ws}/projects/{id}/tasks/{task}", auth.EditTasks, h.updateTask)
+	r.Post("/w/{ws}/projects/{id}/tasks/{task}/move", auth.EditTasks, h.moveTask)
+	r.Post("/w/{ws}/projects/{id}/tasks/{task}/delete", auth.EditTasks, h.deleteTask)
 }
 
 func projectURL(ctx context.Context, id int64) string {

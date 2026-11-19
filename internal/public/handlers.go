@@ -21,10 +21,10 @@ type handler struct {
 
 // Routes adds the public pages. Wrap mux in auth.OptionalLogin so the
 // landing page knows who is signed in.
-func Routes(mux *http.ServeMux, pool *pgxpool.Pool, tdb *tenant.DB) {
+func Routes(mux *web.Mux, pool *pgxpool.Pool, tdb *tenant.DB) {
 	h := handler{q: db.New(pool), tdb: tdb}
-	mux.Handle("GET /{$}", web.Handle(h.landing))
-	mux.Handle("GET /p/{slug}", web.Handle(h.roadmap))
+	mux.Get("/{$}", h.landing)
+	mux.Get("/p/{slug}", h.roadmap)
 }
 
 func (h handler) landing(w http.ResponseWriter, r *http.Request) error {

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 
@@ -77,27 +78,33 @@ func (p *Policy[R, A]) mustKnow(action A) {
 }
 
 // Router registers handlers on mux, each behind the action it requires.
-func (p *Policy[R, A]) Router(mux *http.ServeMux) *Router[R, A] {
+func (p *Policy[R, A]) Router(mux *web.Mux) *Router[R, A] {
 	return &Router[R, A]{mux: mux, policy: p}
 }
 
 // Router registers routes that each name the action they require, and
-// remembers them for the permissions golden file.
+// remembers the actions for the route listing.
 type Router[R ~string, A ~string] struct {
-	mux    *http.ServeMux
-	policy *Policy[R, A]
-	routes []Route
+	mux     *web.Mux
+	policy  *Policy[R, A]
+	actions map[string]string
 }
 
-type Route struct {
-	Pattern string
-	Action  string
+func (r *Router[R, A]) Get(path string, action A, h web.HandlerFunc) {
+	r.handle("GET "+path, action, h)
 }
 
-func (r *Router[R, A]) Handle(pattern string, action A, h func(http.ResponseWriter, *http.Request) error) {
+func (r *Router[R, A]) Post(path string, action A, h web.HandlerFunc) {
+	r.handle("POST "+path, action, h)
+}
+
+func (r *Router[R, A]) handle(pattern string, action A, h web.HandlerFunc) {
 	r.mux.Handle(pattern, r.policy.Require(action)(web.Handle(h)))
-	r.routes = append(r.routes, Route{Pattern: pattern, Action: string(action)})
+	if r.actions == nil {
+		r.actions = map[string]string{}
+	}
+	r.actions[pattern] = string(action)
 }
 
-// Routes lists what Handle registered, in order.
-func (r *Router[R, A]) Routes() []Route { return slices.Clone(r.routes) }
+// Actions maps each pattern registered through r to its action.
+func (r *Router[R, A]) Actions() map[string]string { return maps.Clone(r.actions) }

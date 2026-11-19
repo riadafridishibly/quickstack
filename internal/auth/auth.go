@@ -120,22 +120,22 @@ func New(pool *pgxpool.Pool, jc *jobs.Client, publicURL string) *Auth {
 	}
 }
 
-func (a *Auth) Routes(mux *http.ServeMux) {
-	mux.Handle("GET "+LoginPath, web.Handle(a.loginForm))
-	mux.Handle("POST "+LoginPath, web.Handle(a.login))
-	mux.Handle("POST "+LogoutPath, web.Handle(a.logout))
-	mux.Handle("GET "+SignupPath, web.Handle(a.signupForm))
-	mux.Handle("POST "+SignupPath, web.Handle(a.signup))
-	mux.Handle("GET "+forgotPath, web.Handle(a.forgotForm))
-	mux.Handle("POST "+forgotPath, web.Handle(a.forgot))
-	mux.Handle("GET "+resetPath, web.Handle(a.resetForm))
-	mux.Handle("POST "+resetPath, web.Handle(a.reset))
-	mux.Handle("GET "+verifyEmailPath, web.Handle(a.verifyEmailForm))
-	mux.Handle("POST "+verifyEmailPath, web.Handle(a.verifyEmail))
-	mux.Handle("GET "+challengePath, web.Handle(a.challengeForm))
-	mux.Handle("POST "+challengePath, web.Handle(a.challenge))
-	mux.Handle("GET "+ConfirmPath, a.RequireLogin(web.Handle(a.confirmForm)))
-	mux.Handle("POST "+ConfirmPath, a.RequireLogin(web.Handle(a.confirm)))
+func (a *Auth) Routes(mux *web.Mux) {
+	mux.Get("/login", a.loginForm)
+	mux.Post("/login", a.login)
+	mux.Post("/logout", a.logout)
+	mux.Get("/signup", a.signupForm)
+	mux.Post("/signup", a.signup)
+	mux.Get("/forgot-password", a.forgotForm)
+	mux.Post("/forgot-password", a.forgot)
+	mux.Get("/reset-password", a.resetForm)
+	mux.Post("/reset-password", a.reset)
+	mux.Get("/verify-email", a.verifyEmailForm)
+	mux.Post("/verify-email", a.verifyEmail)
+	mux.Get("/login/verify", a.challengeForm)
+	mux.Post("/login/verify", a.challenge)
+	mux.Handle("GET /confirm", a.RequireLogin(web.Handle(a.confirmForm)))
+	mux.Handle("POST /confirm", a.RequireLogin(web.Handle(a.confirm)))
 }
 
 // RequireLogin puts the signed-in user in the request context, or sends the
