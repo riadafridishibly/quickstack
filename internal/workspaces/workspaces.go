@@ -78,32 +78,32 @@ func newHandler(pool *pgxpool.Pool, jc *jobs.Client, publicURL string) handler {
 
 // Routes adds the pages outside any one workspace, which need a signed-in
 // user: the list of workspaces, and creating one.
-func Routes(mux *http.ServeMux, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
+func Routes(mux *web.Mux, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
 	h := newHandler(pool, jc, publicURL)
-	mux.Handle("GET "+auth.HomePath, web.Handle(h.list))
-	mux.Handle("POST "+auth.HomePath, web.Handle(h.create))
+	mux.Get("/w", h.list)
+	mux.Post("/w", h.create)
 }
 
 // InviteRoutes adds the invitation pages, which anyone with the link can
 // open. Wrap mux in auth.OptionalLogin.
-func InviteRoutes(mux *http.ServeMux, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
+func InviteRoutes(mux *web.Mux, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
 	h := newHandler(pool, jc, publicURL)
-	mux.Handle("GET /invite/{token}", web.Handle(h.invitation))
-	mux.Handle("POST /invite/{token}", web.Handle(h.accept))
+	mux.Get("/invite/{token}", h.invitation)
+	mux.Post("/invite/{token}", h.accept)
 }
 
 // WorkspaceRoutes adds a workspace's members and settings pages to r,
 // which serves behind Middleware.
 func WorkspaceRoutes(r *auth.WorkspaceRouter, pool *pgxpool.Pool, jc *jobs.Client, publicURL string) {
 	h := newHandler(pool, jc, publicURL)
-	r.Handle("GET /w/{ws}/members", auth.AnyMember, h.members)
-	r.Handle("POST /w/{ws}/members/invite", auth.ManageMembers, h.invite)
-	r.Handle("POST /w/{ws}/members/{id}/role", auth.ManageMembers, h.changeRole)
+	r.Get("/w/{ws}/members", auth.AnyMember, h.members)
+	r.Post("/w/{ws}/members/invite", auth.ManageMembers, h.invite)
+	r.Post("/w/{ws}/members/{id}/role", auth.ManageMembers, h.changeRole)
 	// Anyone may leave; removing someone else is checked by canManage.
-	r.Handle("POST /w/{ws}/members/{id}/delete", auth.AnyMember, h.removeMember)
-	r.Handle("POST /w/{ws}/invitations/{id}/delete", auth.ManageMembers, h.revokeInvitation)
-	r.Handle("GET /w/{ws}/settings", auth.ManageWorkspace, h.settings)
-	r.Handle("POST /w/{ws}/settings", auth.ManageWorkspace, h.saveSettings)
+	r.Post("/w/{ws}/members/{id}/delete", auth.AnyMember, h.removeMember)
+	r.Post("/w/{ws}/invitations/{id}/delete", auth.ManageMembers, h.revokeInvitation)
+	r.Get("/w/{ws}/settings", auth.ManageWorkspace, h.settings)
+	r.Post("/w/{ws}/settings", auth.ManageWorkspace, h.saveSettings)
 }
 
 type workspaceForm struct {

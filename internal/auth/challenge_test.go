@@ -55,7 +55,7 @@ func newServer(t *testing.T, f auth.Factor) *server {
 	}
 	a := auth.New(pool, jc, "http://quickstack.test")
 	a.AddFactor(f)
-	mux := http.NewServeMux()
+	mux := web.NewMux("test")
 	a.Routes(mux)
 	ok := web.Handle(func(w http.ResponseWriter, r *http.Request) error {
 		_, err := w.Write([]byte("aal " + strconv.Itoa(int(auth.From(r.Context()).AAL))))

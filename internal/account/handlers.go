@@ -24,15 +24,15 @@ type handler struct {
 	q    *db.Queries
 }
 
-func Routes(mux *http.ServeMux, a *auth.Auth, pool *pgxpool.Pool) {
+func Routes(mux *web.Mux, a *auth.Auth, pool *pgxpool.Pool) {
 	h := handler{auth: a, q: db.New(pool)}
-	mux.Handle("GET "+profilePath, web.Handle(h.profile))
-	mux.Handle("POST "+profilePath, web.Handle(h.updateProfile))
-	mux.Handle("POST "+profilePath+"/verify-email", web.Handle(h.sendVerification))
-	mux.Handle("GET "+securityPath, web.Handle(h.security))
-	mux.Handle("POST "+securityPath+"/password", web.Handle(h.changePassword))
-	mux.Handle("POST "+securityPath+"/sessions/{id}/delete", web.Handle(h.deleteSession))
-	mux.Handle("POST "+securityPath+"/sign-out-others", web.Handle(h.signOutOthers))
+	mux.Get("/account", h.profile)
+	mux.Post("/account", h.updateProfile)
+	mux.Post("/account/verify-email", h.sendVerification)
+	mux.Get("/account/security", h.security)
+	mux.Post("/account/security/password", h.changePassword)
+	mux.Post("/account/security/sessions/{id}/delete", h.deleteSession)
+	mux.Post("/account/security/sign-out-others", h.signOutOthers)
 }
 
 func (h handler) profile(w http.ResponseWriter, r *http.Request) error {

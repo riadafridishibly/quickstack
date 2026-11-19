@@ -39,13 +39,13 @@ type publicHandler struct {
 // Routes adds the public blog, its feed, and the site's sitemap. Drafts and
 // scheduled posts are 404 to everyone; staff see them through the preview
 // in /admin/blog.
-func Routes(mux *http.ServeMux, pool *pgxpool.Pool, publicURL string) {
+func Routes(mux *web.Mux, pool *pgxpool.Pool, publicURL string) {
 	h := publicHandler{q: db.New(pool), publicURL: publicURL}
-	mux.Handle("GET "+blogPath, web.Handle(h.list))
-	mux.Handle("GET "+blogPath+"/{slug}", web.Handle(h.post))
-	mux.Handle("GET "+blogPath+"/tags/{tag}", web.Handle(h.tag))
-	mux.Handle("GET "+feedPath, web.Handle(h.feed))
-	mux.Handle("GET /sitemap.xml", web.Handle(h.sitemap))
+	mux.Get("/blog", h.list)
+	mux.Get("/blog/{slug}", h.post)
+	mux.Get("/blog/tags/{tag}", h.tag)
+	mux.Get("/blog/feed.xml", h.feed)
+	mux.Get("/sitemap.xml", h.sitemap)
 }
 
 // cache lets anyone keep a page for a minute, so a scheduled post shows

@@ -36,14 +36,14 @@ type handler struct {
 // auth.Platform.Require(auth.OpenAdmin).
 func Routes(r *auth.PlatformRouter, pool *pgxpool.Pool) {
 	h := handler{pool: pool, q: db.New(pool)}
-	r.Handle("GET "+homePath, auth.OpenAdmin, h.home)
-	r.Handle("GET /admin/accounts", auth.ViewAccounts, h.accounts)
-	r.Handle("GET /admin/accounts/{id}", auth.ViewAccounts, h.account)
-	r.Handle("POST /admin/accounts/{id}/role", auth.ManagePlatformRoles, h.setRole)
-	r.Handle("POST /admin/accounts/{id}/sign-out", auth.SignOutAccounts, h.signOut)
-	r.Handle("GET /admin/workspaces", auth.ViewAccounts, h.workspaces)
-	r.Handle("GET /admin/workspaces/{id}", auth.ViewAccounts, h.workspace)
-	r.Handle("GET /admin/audit", auth.ViewAccounts, h.audit)
+	r.Get("/admin", auth.OpenAdmin, h.home)
+	r.Get("/admin/accounts", auth.ViewAccounts, h.accounts)
+	r.Get("/admin/accounts/{id}", auth.ViewAccounts, h.account)
+	r.Post("/admin/accounts/{id}/role", auth.ManagePlatformRoles, h.setRole)
+	r.Post("/admin/accounts/{id}/sign-out", auth.SignOutAccounts, h.signOut)
+	r.Get("/admin/workspaces", auth.ViewAccounts, h.workspaces)
+	r.Get("/admin/workspaces/{id}", auth.ViewAccounts, h.workspace)
+	r.Get("/admin/audit", auth.ViewAccounts, h.audit)
 }
 
 // section is an entry in the admin sidebar and the action it needs.

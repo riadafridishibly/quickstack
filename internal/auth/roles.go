@@ -8,7 +8,7 @@ import (
 // This file is the app's permissions: who may do what in a workspace and in
 // /admin. A project that copies auth rewrites it. Code outside it asks about
 // actions, never about role names. internal/app/testdata/permissions.golden
-// shows the result; go test ./internal/app -update rewrites it.
+// and routes.golden show the result; go test ./internal/app -update rewrites them.
 
 // Role is what a member may do in one workspace.
 type Role string

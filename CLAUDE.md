@@ -62,9 +62,9 @@ Role-based. Each scope has roles, actions, and a table of which roles may perfor
 
 - **Workspace roles** (`owner`, `admin`, `member`, `viewer`) live in `memberships`. `workspaces.Middleware` puts the user's role in the request context, and `auth.Workspace.CanIn(ctx, action)` decides what a template shows.
 - **Platform roles** (`superadmin`, `support`, `editor`) live on `accounts.platform_role` and open `/admin`: `auth.Platform.CanIn(ctx, action)`. `OpenAdmin` lets a role in; each section also checks its own action (`ViewAccounts` for accounts, workspaces and the audit log, `ManageBlog` for the blog), and the sidebar lists only those the role may open (`sections` in `internal/platform/handlers.go`). An editor sees no accounts or workspaces. Platform roles give no access to any workspace; staff see that a workspace exists and who is in it, not its data.
-- Routes inside a workspace or `/admin` go through an `auth.WorkspaceRouter` or `auth.PlatformRouter`: `r.Handle(pattern, action, h)`. Every route names its action; `auth.AnyMember` is for what every member may do.
+- Routes inside a workspace or `/admin` go through an `auth.WorkspaceRouter` or `auth.PlatformRouter`: `r.Get(path, action, h)` or `r.Post(path, action, h)`. Every route names its action; `auth.AnyMember` is for what every member may do.
 - A rule about one record, such as "only owners manage owners", is a named function in the feature package that starts from an action, and both the handler and the template call it (`canManage` in `internal/workspaces/members.go`).
-- `internal/app/testdata/permissions.golden` lists role × action and the action of every workspace and admin route. After changing either, run `go test ./internal/app -update` and read the diff.
+- `internal/app/testdata/permissions.golden` lists role × action, and `routes.golden` every route the app serves, grouped by mux, with the action of each workspace and admin route. After changing roles or routes, run `go test ./internal/app -update` and read the diff.
 - Ownership is the query: a row of another workspace isn't forbidden, it's not found.
 
 ## Adding a feature
@@ -80,11 +80,11 @@ Copy `internal/projects/`. It has a list with live search and a filter, create a
    `TestEveryWorkspaceTableHasRLS` fails if a table with `workspace_id` lacks the policy.
 2. Queries: `internal/db/queries/<feature>.sql` with sqlc annotations, then `make gen`. Every query still filters `WHERE workspace_id = @workspace_id`; RLS is the backstop, not the filter. Go code calls the generated methods and never builds SQL strings. Pass user search text through `db.EscapeLike` before `ILIKE`.
 3. Package `internal/<feature>/`:
-   - `handlers.go`: `Routes(r *auth.WorkspaceRouter, tdb *tenant.DB)` plus the handlers. Workspace routes are `/w/{ws}/<feature>...`, each registered with `r.Handle(pattern, action, h)`; add actions in `internal/auth/roles.go`
+   - `handlers.go`: `Routes(r *auth.WorkspaceRouter, tdb *tenant.DB)` plus the handlers. Workspace routes are `/w/{ws}/<feature>...`, each registered with `r.Get` or `r.Post` and its action; add actions in `internal/auth/roles.go`
    - `form.go`: parse, normalize, and validate
    - `views.templ`, with pages in `@workspaces.Layout(title)`
    - tests (see Tests)
-4. Call `Routes` in `internal/app/app.go` with `wsr` (inside a workspace) or `admr` (platform staff), then run `go test ./internal/app -update`. Pages for any signed-in user go on the `signedIn` mux and public ones on `open`, with `mux.Handle`. Add a sidebar entry in the dashboard's `shell` function (`internal/workspaces/views.templ` for a workspace).
+4. Call `Routes` in `internal/app/app.go` with `wsr` (inside a workspace) or `admr` (platform staff), then run `go test ./internal/app -update`. Pages for any signed-in user go on the `signedIn` mux and public ones on `open`, with `mux.Get` and `mux.Post`. Add a sidebar entry in the dashboard's `shell` function (`internal/workspaces/views.templ` for a workspace).
 
 To drop a sample, delete its package, its routes in `app.go`, its sidebar entry, and (before the first deploy) its migration and queries.
 
@@ -134,7 +134,8 @@ A site-wide blog, written at `/admin/blog` by platform roles with `ManageBlog` (
 
 ## Handlers
 
-- Write `func(w, r) error` and wrap it in `web.Handle`. Return `web.ErrNotFound` for a 404 and `web.ErrForbidden` for a 403. Any other error is logged and renders the 500 page.
+- Register routes on a `web.Mux` (or an `auth.Router`, which adds the action) with `Get` and `Post`, and write the full path, such as `mux.Post("/account/security/password", h.changePassword)`, so the route reads as its URL. Keep path constants for links and redirects. `web.Mux` is an `http.ServeMux` that records its patterns for `routes.golden`; `Handle` takes a raw pattern and `http.Handler` when a route needs middleware.
+- Write `func(w, r) error`. `Get` and `Post` wrap it in `web.Handle`. Return `web.ErrNotFound` for a 404 and `web.ErrForbidden` for a 403. Any other error is logged and renders the 500 page.
 - `auth.From(ctx)` is the signed-in user; `tenant.From(ctx)` the workspace, and `ws.URL("/path")` a link inside it.
 - Render with `web.Render(w, r, status, component)`. It buffers, so a template error never sends half a page.
 - One URL serves both the page and its fragment. Render the fragment when `web.IsHTMX(r)` is true, or when `web.HXTarget(r) == "<element id>"` if one URL feeds several targets. Otherwise render the full page.

@@ -35,14 +35,14 @@ type adminHandler struct {
 // posts. Register it inside /admin.
 func AdminRoutes(r *auth.PlatformRouter, pool *pgxpool.Pool) {
 	h := adminHandler{pool: pool, q: db.New(pool)}
-	r.Handle("GET "+adminPath, auth.ManageBlog, h.list)
-	r.Handle("GET "+adminPath+"/new", auth.ManageBlog, h.newPost)
-	r.Handle("POST "+adminPath, auth.ManageBlog, h.create)
-	r.Handle("POST "+previewPath, auth.ManageBlog, h.previewDraft)
-	r.Handle("GET "+adminPath+"/{id}", auth.ManageBlog, h.edit)
-	r.Handle("POST "+adminPath+"/{id}", auth.ManageBlog, h.update)
-	r.Handle("POST "+adminPath+"/{id}/delete", auth.ManageBlog, h.delete)
-	r.Handle("GET "+adminPath+"/{id}/preview", auth.ManageBlog, h.preview)
+	r.Get("/admin/blog", auth.ManageBlog, h.list)
+	r.Get("/admin/blog/new", auth.ManageBlog, h.newPost)
+	r.Post("/admin/blog", auth.ManageBlog, h.create)
+	r.Post("/admin/blog/preview", auth.ManageBlog, h.previewDraft)
+	r.Get("/admin/blog/{id}", auth.ManageBlog, h.edit)
+	r.Post("/admin/blog/{id}", auth.ManageBlog, h.update)
+	r.Post("/admin/blog/{id}/delete", auth.ManageBlog, h.delete)
+	r.Get("/admin/blog/{id}/preview", auth.ManageBlog, h.preview)
 }
 
 type listView struct {
