@@ -1,0 +1,64 @@
+package auth
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/riadafridishibly/quickstack/internal/web"
+)
+
+templ totpForm(errMsg string) {
+	@totpField(errMsg)
+	<button type="submit" class={ web.ButtonClass, "w-full" }>Verify</button>
+}
+
+templ totpField(errMsg string) {
+	@web.Field("Code from your authenticator app", "totp_code", errMsg) {
+		<input type="text" { web.InputAttrs("totp_code", errMsg)... } inputmode="numeric" autocomplete="one-time-code" maxlength="7" required autofocus class={ web.InputClass, "font-mono" }/>
+	}
+}
+
+// totpSection is the authenticator app's part of the security page. since
+// is when it was set up, or nil.
+templ totpSection(since *time.Time) {
+	<section class={ web.PaddedCardClass }>
+		<div class="flex items-center justify-between gap-3">
+			<h2 class="text-lg font-semibold">Authenticator app</h2>
+			if since != nil {
+				<span class="badge badge-soft badge-success">On</span>
+			}
+		</div>
+		if since == nil {
+			<p class="mt-1 text-sm opacity-70">Ask for a code from an app such as 1Password, Google Authenticator or Authy when you sign in, as well as your password.</p>
+			<a href={ templ.SafeURL(totpPath) } class={ web.SecondaryButtonClass, "mt-4" }>Set up</a>
+		} else {
+			<p class="mt-1 text-sm opacity-70">Signing in asks for a code from your app. Set up { since.Format("Jan 2, 2006") }.</p>
+			<form method="post" action={ templ.SafeURL(totpPath + "/delete") } class="mt-4">
+				<button type="submit" class={ web.DangerButtonClass }>Remove</button>
+			</form>
+		}
+	</section>
+}
+
+templ totpSetupPage(layout func(string) templ.Component, v totpSetupView) {
+	@layout("Set up an authenticator app") {
+		@web.PageHeader("Set up an authenticator app")
+		<form method="post" action={ templ.SafeURL(totpPath) } novalidate class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
+			<input type="hidden" name="secret" value={ v.Sealed }/>
+			<p class="text-sm">Scan this code with your authenticator app.</p>
+			<svg viewBox={ "0 0 " + strconv.Itoa(v.QRSize) + " " + strconv.Itoa(v.QRSize) } class="size-48 rounded-box" shape-rendering="crispEdges" role="img" aria-label="QR code to scan">
+				<rect width="100%" height="100%" fill="#fff"></rect>
+				<path d={ v.QR } fill="#000"></path>
+			</svg>
+			<div class="text-sm">
+				<p>Or enter this key:</p>
+				<p id="totp-key" class="mt-1 font-mono break-all">{ v.Key }</p>
+			</div>
+			@totpField(v.Error)
+			<div class="flex flex-wrap items-center gap-4">
+				<button type="submit" class={ web.ButtonClass }>Turn on</button>
+				<a href={ templ.SafeURL(SecurityPath) } class={ web.LinkClass }>Cancel</a>
+			</div>
+		</form>
+	}
+}

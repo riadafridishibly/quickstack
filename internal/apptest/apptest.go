@@ -23,6 +23,9 @@ import (
 // PublicURL is the origin links in test mail point to.
 const PublicURL = "http://quickstack.test"
 
+// SecretKey is the key the app seals secrets with in tests.
+var SecretKey = []byte("0123456789abcdef0123456789abcdef")
+
 type Server struct {
 	t    testing.TB
 	Pool *pgxpool.Pool
@@ -40,7 +43,7 @@ func New(t testing.TB) *Server {
 	}
 	// The Vite URL makes the layout point at a dev server, so tests don't
 	// need a frontend build.
-	h, err := app.New(app.Config{ViteURL: "http://localhost:8361", PublicURL: PublicURL, Blob: store}, pool)
+	h, err := app.New(app.Config{ViteURL: "http://localhost:8361", PublicURL: PublicURL, Blob: store, SecretKey: SecretKey}, pool)
 	if err != nil {
 		t.Fatal(err)
 	}

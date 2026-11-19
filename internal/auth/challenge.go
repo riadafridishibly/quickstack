@@ -1,34 +1,17 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/web"
 )
-
-// A Factor is a second factor, such as an authenticator app. Each lives in
-// its own file and is added with Auth.AddFactor. Signing in asks for one
-// when the account has any.
-type Factor interface {
-	// Name tells factors apart in the challenge form, such as "totp".
-	Name() string
-	// Enrolled reports whether the account has set the factor up.
-	Enrolled(ctx context.Context, q *db.Queries, accountID int64) (bool, error)
-	// Form renders the factor's fields and submit button inside the
-	// challenge form. errMsg is set after Verify fails.
-	Form(errMsg string) templ.Component
-	// Verify checks what Form posted.
-	Verify(ctx context.Context, q *db.Queries, accountID int64, r *http.Request) (bool, error)
-}
 
 const (
 	challengePath   = "/login/verify"
@@ -38,26 +21,10 @@ const (
 	maxChallengeTries = 5
 )
 
-func (a *Auth) AddFactor(f Factor) { a.factors = append(a.factors, f) }
-
-func (a *Auth) enrolled(ctx context.Context, accountID int64) ([]Factor, error) {
-	var fs []Factor
-	for _, f := range a.factors {
-		ok, err := f.Enrolled(ctx, a.q, accountID)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			fs = append(fs, f)
-		}
-	}
-	return fs, nil
-}
-
 // signIn follows a first factor such as a password. It starts a session, or,
 // when the account has a second factor, a challenge that asks for it.
 func (a *Auth) signIn(w http.ResponseWriter, r *http.Request, accountID int64, next string) error {
-	fs, err := a.enrolled(r.Context(), accountID)
+	fs, err := a.enrolled(r.Context(), a.q, accountID)
 	if err != nil {
 		return err
 	}
@@ -106,7 +73,7 @@ func (a *Auth) challengeForm(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	fs, err := a.enrolled(r.Context(), ch.AccountID)
+	fs, err := a.enrolled(r.Context(), a.q, ch.AccountID)
 	if err != nil {
 		return err
 	}
@@ -131,7 +98,7 @@ func (a *Auth) challenge(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	fs, err := a.enrolled(r.Context(), ch.AccountID)
+	fs, err := a.enrolled(r.Context(), a.q, ch.AccountID)
 	if err != nil {
 		return err
 	}

@@ -50,8 +50,12 @@ GET   /account
 POST  /account
 GET   /account/security
 POST  /account/security/password
+POST  /account/security/recovery-codes
 POST  /account/security/sessions/{id}/delete
 POST  /account/security/sign-out-others
+GET   /account/security/totp
+POST  /account/security/totp
+POST  /account/security/totp/delete
 POST  /account/verify-email
 *     /admin
 *     /admin/

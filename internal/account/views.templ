@@ -108,6 +108,9 @@ templ securityPage(v securityView) {
 					<button type="submit" class={ web.ButtonClass }>Change password</button>
 				</form>
 			}
+			for _, f := range v.Factors {
+				@f
+			}
 			<section class={ web.PaddedCardClass }>
 				<h2 class="text-lg font-semibold">Sessions</h2>
 				<p class="mt-1 text-sm opacity-70">Where you’re signed in. Sign out of a device you don’t recognize, then change your password.</p>

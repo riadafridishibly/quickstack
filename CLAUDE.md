@@ -31,7 +31,7 @@ internal/app/         New(cfg, pool): every route and middleware; Serve; Workers
 internal/config/      QUICKSTACK_* environment
 internal/db/          Connect, Migrate, roles.sql, migrations/, queries/, sqlc output, EscapeLike
 internal/tenant/      Workspace, WithWorkspace/From(ctx), DB.Tx
-internal/auth/        accounts, argon2id passwords, sessions, sign in/up, password reset, email verification, second-factor challenges, confirm-it's-you; Policy and Router (policy.go), this app's roles (roles.go); authtest/
+internal/auth/        accounts, argon2id passwords, sessions, sign in/up, password reset, email verification, second-factor challenges, authenticator apps (TOTP), recovery codes, confirm-it's-you; Policy and Router (policy.go), this app's roles (roles.go); authtest/
 internal/workspaces/  the tenant layer: Middleware for /w/{ws}, the workspace Layout, the list at /w, settings, members, invitations
 internal/account/     the personal dashboard: profile, password, sessions; its Layout frames /w too
 internal/platform/    the staff dashboard at /admin: accounts, workspaces, audit log
@@ -93,17 +93,22 @@ To drop a sample, delete its package, its routes in `app.go`, its sidebar entry,
 Auth is the part other projects most often take on its own and adapt:
 
 - `internal/auth/`. `roles.go` holds this app's roles; the `platform_role` check in `create_auth` lists the platform roles too, so change both.
-- the migrations `*_default_privileges.sql` and `*_create_auth.sql` (accounts, sessions, password resets, email verifications, login challenges, the audit log)
-- the queries `auth.sql` and `audit.sql`
+- the migrations `*_default_privileges.sql` and `*_create_auth.sql` (accounts, sessions, password resets, email verifications, login challenges, recovery codes, the audit log), and `*_create_totp.sql` for the authenticator app
+- the queries `auth.sql`, `audit.sql` and `totp.sql`
+- `QUICKSTACK_SECRET_KEY` in the config, passed to `auth.NewTOTP`
+
+To drop the authenticator app, delete `internal/auth/totp*`, its migration and queries, and its `AddFactor` line.
 
 Its code uses only `db`, `web`, `mail` and `jobs` from this module, and `make check-deps` fails otherwise; keep workspace concerns such as memberships and invitations in `internal/workspaces`. Its handler tests run through `apptest`, the whole app, so they need adapting where that doesn't exist.
 
 How signing in fits together:
 
 - Every sign-in page ends its first factor (a password, a reset link) with `signIn`. With no second factor it starts a session at `AAL1`; otherwise it stores a `login_challenges` row, not a session, and `/login/verify` asks for a factor before starting one at `AAL2`.
-- A second factor implements `auth.Factor` in its own file and is added in `app.go` with `a.AddFactor(...)`. The core never names a factor's types.
+- A second factor implements `auth.Factor` in its own file and is added in `app.go` with `a.AddFactor(...)`, before `a.SecurityRoutes(signedIn)`. It brings its own migration, query file and templ file, its section of the security page (`Settings`) and its setup pages under `auth.SecurityPath` (`Routes`, behind `RequireRecent`, framed by `a.Layout`). On setup and removal it calls `factorAdded` and `factorRemoved`, which write the audit log, mail a security notice, and create or delete recovery codes. The core never names a factor's types.
+- TOTP (`totp.go`) is the first factor. Its secrets are sealed with AES-GCM under `QUICKSTACK_SECRET_KEY` (`secret.go`); `make dev` uses a fixed key. Each code works once: `last_step` only moves forward.
+- Recovery codes (`recovery.go`) are part of the core, not a factor added in `app.go`. They count only while the account has another factor, and are shown once, when made.
 - `accounts.password_hash` is NULL for an account that signs in only another way. Sign-up mails a verification link; `User.EmailVerified` says whether the address is proven. A password reset link proves it too.
-- Pages that add or remove a sign-in method, such as setting up an authenticator app, go behind `auth.RequireRecent`, which sends a user who hasn't signed in or confirmed in the last 15 minutes to `/confirm` first. Changing the password asks for the current one instead.
+- Pages that add or remove a sign-in method, such as setting up an authenticator app, go behind `auth.RequireRecent`, which sends a user who hasn't signed in or confirmed in the last 15 minutes to `/confirm` first. `/confirm` asks for a second factor when the account has one, and the password otherwise. Changing the password asks for the current one instead.
 
 ## Database access
 

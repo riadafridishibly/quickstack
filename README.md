@@ -53,11 +53,12 @@ docker run -p 8360:8360 \
   -e QUICKSTACK_DATABASE_URL=postgres://quickstack_app:…@db/quickstack \
   -e QUICKSTACK_MIGRATE_URL=postgres://quickstack_owner:…@db/quickstack \
   -e QUICKSTACK_PUBLIC_URL=https://example.com \
+  -e QUICKSTACK_SECRET_KEY=$(openssl rand -base64 32) \
   -v quickstack-media:/var/lib/quickstack/media \
   quickstack
 ```
 
-The server applies migrations as it starts. Uploads go to `/var/lib/quickstack/media`, or to a bucket when `QUICKSTACK_BLOB_URL` is set:
+Generate `QUICKSTACK_SECRET_KEY` once and keep it: it seals the keys of people's authenticator apps, which are lost without it. The server applies migrations as it starts. Uploads go to `/var/lib/quickstack/media`, or to a bucket when `QUICKSTACK_BLOB_URL` is set:
 
 ```sh
 QUICKSTACK_BLOB_URL=s3://key:secret@bucket/prefix?endpoint=s3.example.com&region=eu-central-1

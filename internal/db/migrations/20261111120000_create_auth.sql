@@ -63,6 +63,16 @@ CREATE TABLE login_challenges (
 );
 CREATE INDEX login_challenges_account ON login_challenges (account_id);
 
+-- Recovery codes stand in for a second factor that is lost. Each works once.
+-- They are random enough that a plain hash protects them.
+CREATE TABLE recovery_codes (
+    account_id bigint      NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+    code_hash  bytea       NOT NULL,
+    used_at    timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, code_hash)
+);
+
 -- workspace_id gets its foreign key from the workspaces migration, so this
 -- one stands alone in a project without workspaces.
 CREATE TABLE audit_log (
@@ -78,6 +88,7 @@ CREATE INDEX audit_log_action ON audit_log (action, at DESC, id DESC);
 
 -- +goose Down
 DROP TABLE audit_log;
+DROP TABLE recovery_codes;
 DROP TABLE login_challenges;
 DROP TABLE email_verifications;
 DROP TABLE password_resets;

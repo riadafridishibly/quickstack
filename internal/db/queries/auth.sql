@@ -35,8 +35,11 @@ WHERE s.token_hash = @token_hash AND s.expires_at > now();
 -- name: TouchSession :exec
 UPDATE sessions SET last_seen_at = now(), expires_at = @expires_at WHERE token_hash = @token_hash;
 
+-- ConfirmSession records that the user proved who they are, with a second
+-- factor when aal is 2.
 -- name: ConfirmSession :exec
-UPDATE sessions SET authenticated_at = now() WHERE token_hash = @token_hash;
+UPDATE sessions SET authenticated_at = now(), aal = greatest(aal, @aal::smallint)
+WHERE token_hash = @token_hash;
 
 -- name: ListSessions :many
 SELECT id, user_agent, created_at, last_seen_at
@@ -122,3 +125,17 @@ DELETE FROM login_challenges WHERE token_hash = @token_hash;
 
 -- name: PurgeExpiredLoginChallenges :execrows
 DELETE FROM login_challenges WHERE expires_at <= now();
+
+-- name: CreateRecoveryCodes :exec
+INSERT INTO recovery_codes (account_id, code_hash)
+SELECT @account_id, unnest(@code_hashes::bytea[]);
+
+-- name: CountRecoveryCodes :one
+SELECT count(*) FROM recovery_codes WHERE account_id = @account_id AND used_at IS NULL;
+
+-- name: UseRecoveryCode :execrows
+UPDATE recovery_codes SET used_at = now()
+WHERE account_id = @account_id AND code_hash = @code_hash AND used_at IS NULL;
+
+-- name: DeleteRecoveryCodes :exec
+DELETE FROM recovery_codes WHERE account_id = @account_id;

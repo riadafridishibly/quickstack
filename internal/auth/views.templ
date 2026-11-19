@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/url"
+	"strconv"
 
 	"github.com/riadafridishibly/quickstack/internal/web"
 )
@@ -192,21 +193,7 @@ templ challengePage(v challengeView) {
 	@web.Layout("Verify it’s you") {
 		<div class="mx-auto max-w-sm">
 			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Verify it’s you</h1>
-			<div class="space-y-4">
-				for i, f := range v.Factors {
-					if i > 0 {
-						<p class="text-center text-sm opacity-70">or</p>
-					}
-					<form method="post" action={ templ.SafeURL(challengePath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
-						<input type="hidden" name="factor" value={ f.Name() }/>
-						if f.Name() == v.Failed {
-							@f.Form(v.Error)
-						} else {
-							@f.Form("")
-						}
-					</form>
-				}
-			</div>
+			@factorForms(challengePath, "", v.Factors, v.Failed, v.Error)
 			<p class="mt-6 text-center text-sm opacity-80">
 				<a href={ templ.SafeURL(LoginPath) } class={ web.LinkClass }>Start over</a>
 			</p>
@@ -214,11 +201,36 @@ templ challengePage(v challengeView) {
 	}
 }
 
+// factorForms renders a form for each factor, posting to action. The one
+// named failed shows errMsg.
+templ factorForms(action, next string, fs []Factor, failed, errMsg string) {
+	<div class="space-y-4">
+		for i, f := range fs {
+			if i > 0 {
+				<p class="text-center text-sm opacity-70">or</p>
+			}
+			<form method="post" action={ templ.SafeURL(action) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
+				<input type="hidden" name="factor" value={ f.Name() }/>
+				if next != "" {
+					<input type="hidden" name="next" value={ next }/>
+				}
+				if f.Name() == failed {
+					@f.Form(errMsg)
+				} else {
+					@f.Form("")
+				}
+			</form>
+		}
+	</div>
+}
+
 templ confirmPage(v confirmView) {
 	@web.Layout("Confirm it’s you") {
 		<div class="mx-auto max-w-sm">
 			<h1 class="mb-6 text-2xl font-semibold tracking-tight">Confirm it’s you</h1>
-			if v.HasPassword {
+			if len(v.Factors) > 0 {
+				@factorForms(ConfirmPath, v.Next, v.Factors, v.Failed, v.Error)
+			} else if v.HasPassword {
 				<form method="post" action={ templ.SafeURL(ConfirmPath) } novalidate class={ web.PaddedCardClass, "space-y-5" }>
 					<p class="text-sm opacity-80">Enter your password to continue.</p>
 					<input type="hidden" name="next" value={ v.Next }/>
@@ -231,6 +243,50 @@ templ confirmPage(v confirmView) {
 			<form method="post" action={ templ.SafeURL(LogoutPath) } class="mt-6 text-center text-sm opacity-80">
 				Or <button type="submit" class={ web.LinkClass }>sign out</button> and sign in again.
 			</form>
+		</div>
+	}
+}
+
+templ recoveryForm(errMsg string) {
+	<details open?={ errMsg != "" } class="group">
+		<summary class="cursor-pointer text-sm font-medium">Use a recovery code</summary>
+		<div class="mt-4 space-y-5">
+			@web.Field("Recovery code", "recovery_code", errMsg) {
+				<input type="text" { web.InputAttrs("recovery_code", errMsg)... } autocomplete="off" autocapitalize="off" spellcheck="false" required class={ web.InputClass, "font-mono" }/>
+			}
+			<button type="submit" class={ web.SecondaryButtonClass, "w-full" }>Use code</button>
+		</div>
+	</details>
+}
+
+templ recoverySection(left int) {
+	<section class={ web.PaddedCardClass }>
+		<h2 class="text-lg font-semibold">Recovery codes</h2>
+		<p class="mt-1 text-sm opacity-70">Each code signs you in once if you can’t use your second factor, such as after losing your phone.</p>
+		<p class={ "mt-3 text-sm", templ.KV("text-warning", left <= 3) }>
+			{ strconv.Itoa(left) } of { strconv.Itoa(recoveryCodeCount) } codes left.
+		</p>
+		<form method="post" action={ templ.SafeURL(recoveryPath) } class="mt-4">
+			<button type="submit" class={ web.SecondaryButtonClass }>Make new codes</button>
+		</form>
+	</section>
+}
+
+// recoveryCodesPage shows new recovery codes, the only time they are shown.
+templ recoveryCodesPage(layout func(string) templ.Component, notice string, codes []string) {
+	@layout("Recovery codes") {
+		@web.PageHeader("Save your recovery codes")
+		<div class={ web.PaddedCardClass, "max-w-xl space-y-5" }>
+			if notice != "" {
+				<p role="status" class="alert alert-success alert-soft">{ notice }</p>
+			}
+			<p class="text-sm">If you can’t use your second factor, each of these codes signs you in once. Keep them in a password manager or print them: this is the only time they’re shown, and the codes you had before no longer work.</p>
+			<ul id="recovery-codes" class="grid grid-cols-2 gap-x-6 gap-y-2 rounded-box bg-base-200 p-4 font-mono">
+				for _, c := range codes {
+					<li>{ c }</li>
+				}
+			</ul>
+			<a href={ templ.SafeURL(SecurityPath) } class={ web.ButtonClass }>I’ve saved them</a>
 		</div>
 	}
 }

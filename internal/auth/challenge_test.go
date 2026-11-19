@@ -40,6 +40,12 @@ func (codeFactor) Verify(_ context.Context, _ *db.Queries, _ int64, r *http.Requ
 	return r.PostFormValue("code") == "123456", nil
 }
 
+func (codeFactor) Settings(context.Context, *db.Queries, int64) (templ.Component, error) {
+	return templ.NopComponent, nil
+}
+
+func (codeFactor) Routes(*web.Mux) {}
+
 // server is auth on its own, with a factor and a page behind RequireRecent.
 type server struct {
 	t    *testing.T

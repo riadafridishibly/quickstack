@@ -1,5 +1,5 @@
 // Package account is the signed-in person's own dashboard: their profile,
-// password and sessions. Its Layout also frames the list of workspaces.
+// password, second factors and sessions. Its Layout also frames the list of workspaces.
 package account
 
 import (
@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/riadafridishibly/quickstack/internal/auth"
@@ -16,7 +17,7 @@ import (
 
 const (
 	profilePath  = "/account"
-	securityPath = "/account/security"
+	securityPath = auth.SecurityPath
 )
 
 type handler struct {
@@ -82,9 +83,11 @@ type securityView struct {
 	// HasPassword is false for an account that signs in only another way.
 	HasPassword bool
 	Form        passwordForm
-	Sessions    []db.ListSessionsRow
-	Current     int64
-	Message     string
+	// Factors are the sections second factors add.
+	Factors  []templ.Component
+	Sessions []db.ListSessionsRow
+	Current  int64
+	Message  string
 }
 
 func (h handler) loadSecurity(r *http.Request, v *securityView) error {
@@ -95,6 +98,9 @@ func (h handler) loadSecurity(r *http.Request, v *securityView) error {
 		return err
 	}
 	v.HasPassword = acc.PasswordHash != nil
+	if v.Factors, err = h.auth.SecuritySections(r.Context(), u.ID); err != nil {
+		return err
+	}
 	v.Sessions, err = h.q.ListSessions(r.Context(), u.ID)
 	return err
 }

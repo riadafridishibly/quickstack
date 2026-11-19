@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { test as base, expect, type Page } from "@playwright/test";
 
 // Every test fails if the page logs a console error or throws, e.g. a CSP
@@ -48,4 +49,19 @@ export async function signUp(page: Page, name: string, email: string, password: 
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
+}
+
+// totp is the code an authenticator app shows at `at` for a key as the
+// setup page prints it (RFC 6238: SHA-1, six digits, 30-second steps).
+export function totp(key: string, at = Date.now()): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const ch of key.replace(/\s/g, ""))
+    bits += alphabet.indexOf(ch).toString(2).padStart(5, "0");
+  const secret = Buffer.from(bits.match(/.{8}/g)?.map((b) => Number.parseInt(b, 2)) ?? []);
+  const counter = Buffer.alloc(8);
+  counter.writeBigInt64BE(BigInt(Math.floor(at / 30_000)));
+  const mac = createHmac("sha1", secret).update(counter).digest();
+  const off = (mac.at(-1) ?? 0) & 0x0f;
+  return String((mac.readUInt32BE(off) & 0x7fffffff) % 1_000_000).padStart(6, "0");
 }
