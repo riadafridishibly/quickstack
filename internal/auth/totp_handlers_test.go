@@ -11,6 +11,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/apptest"
 	"github.com/riadafridishibly/quickstack/internal/auth"
 	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
+	"github.com/riadafridishibly/quickstack/internal/db"
 )
 
 var (
@@ -34,6 +35,9 @@ func enableTOTP(t *testing.T, s *apptest.Server, c *http.Cookie) (string, []stri
 	t.Helper()
 	w := s.Get("/account/security/totp", c)
 	apptest.Status(t, w, http.StatusOK)
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("setup page Cache-Control %q", got)
+	}
 	key, sealed := match(t, keyRE, w.Body.String()), match(t, sealedRE, w.Body.String())
 
 	apptest.Status(t, s.Post("/account/security/totp", c, url.Values{"secret": {sealed}, "totp_code": {"000000"}}), http.StatusUnprocessableEntity)
@@ -66,7 +70,11 @@ func challenge(t *testing.T, s *apptest.Server, email string) *http.Cookie {
 func TestTOTP(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
-	_, c := authtest.SignIn(t, s.Pool, "ana@example.com")
+	id, c := authtest.SignIn(t, s.Pool, "ana@example.com")
+	other, err := auth.NewSession(t.Context(), db.New(s.Pool), id, auth.AAL1, "other device")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if body := s.Get("/account/security", c).Body.String(); !strings.Contains(body, `href="/account/security/totp"`) || strings.Contains(body, "Recovery codes") {
 		t.Fatalf("security page before setup:\n%s", body)
 	}
@@ -75,6 +83,8 @@ func TestTOTP(t *testing.T) {
 		t.Errorf("no notice of the new factor: %+v", mail[len(mail)-1])
 	}
 	apptest.Redirect(t, s.Get("/account/security/totp", c), "/account/security")
+	// Sessions that signed in without the app end.
+	apptest.Redirect(t, s.Get("/w", &http.Cookie{Name: auth.CookieName, Value: other}), "/login?next=%2Fw")
 	if body := s.Get("/account/security", c).Body.String(); !strings.Contains(body, "10 of 10 codes left") {
 		t.Errorf("security page after setup:\n%s", body)
 	}
@@ -110,7 +120,7 @@ func TestTOTP(t *testing.T) {
 	if strings.Contains(body, `name="password"`) || !strings.Contains(body, `name="totp_code"`) {
 		t.Fatalf("confirm page:\n%s", body)
 	}
-	apptest.Status(t, s.Post("/confirm", c, url.Values{"password": {authtest.Password}, "next": {"/account/security"}}), http.StatusNotFound)
+	apptest.Status(t, s.Post("/confirm", c, url.Values{"password": {authtest.Password}, "next": {"/account/security"}}), http.StatusUnprocessableEntity)
 	apptest.Redirect(t, s.Post("/confirm", c, url.Values{"factor": {"recovery"}, "recovery_code": {codes[1]}, "next": {"/account/security"}}), "/account/security")
 
 	// New codes replace the old ones.

@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -91,9 +92,9 @@ func (*TOTP) Settings(ctx context.Context, q *db.Queries, accountID int64) (temp
 }
 
 func (t *TOTP) Routes(mux *web.Mux) {
-	mux.Handle("GET "+totpPath, RequireRecent(web.Handle(t.setupForm)))
-	mux.Handle("POST "+totpPath, RequireRecent(web.Handle(t.setup)))
-	mux.Handle("POST "+totpPath+"/delete", RequireRecent(web.Handle(t.remove)))
+	mux.Handle("GET /account/security/totp", RequireRecent(web.Handle(t.setupForm)))
+	mux.Handle("POST /account/security/totp", RequireRecent(web.Handle(t.setup)))
+	mux.Handle("POST /account/security/totp/delete", RequireRecent(web.Handle(t.remove)))
 }
 
 type totpSetupView struct {
@@ -131,6 +132,7 @@ func (t *TOTP) setupView(u *User, secret []byte) (totpSetupView, error) {
 }
 
 func (t *TOTP) setupForm(w http.ResponseWriter, r *http.Request) error {
+	noStore(w)
 	u := From(r.Context())
 	if ok, err := t.Enrolled(r.Context(), t.a.q, u.ID); err != nil || ok {
 		if ok {
@@ -147,7 +149,10 @@ func (t *TOTP) setupForm(w http.ResponseWriter, r *http.Request) error {
 	return web.Render(w, r, http.StatusOK, totpSetupPage(t.a.Layout, v))
 }
 
+// setup isn't rate limited: the form holds the secret, so there is nothing
+// to guess.
 func (t *TOTP) setup(w http.ResponseWriter, r *http.Request) error {
+	noStore(w)
 	u := From(r.Context())
 	sealed, err := base64.RawURLEncoding.DecodeString(r.PostFormValue("secret"))
 	if err != nil {
@@ -163,10 +168,6 @@ func (t *TOTP) setup(w http.ResponseWriter, r *http.Request) error {
 	v, err := t.setupView(u, secret)
 	if err != nil {
 		return err
-	}
-	if !t.a.factorTries.Allow(strconv.FormatInt(u.ID, 10)) {
-		v.Error = "Too many attempts. Wait a few minutes and try again."
-		return web.Render(w, r, http.StatusTooManyRequests, totpSetupPage(t.a.Layout, v))
 	}
 	step, ok := totpMatch(secret, r.PostFormValue("totp_code"), time.Now())
 	if !ok {
@@ -246,7 +247,7 @@ func hotp(secret []byte, counter int64) string {
 	sum := mac.Sum(nil)
 	off := sum[len(sum)-1] & 0x0f
 	n := binary.BigEndian.Uint32(sum[off:]) & 0x7fffffff
-	return fmt.Sprintf("%0*d", totpDigits, n%1_000_000)
+	return fmt.Sprintf("%0*d", totpDigits, n%uint32(math.Pow10(totpDigits)))
 }
 
 // qrPath draws text as a QR code: an SVG path of one unit per module, inside

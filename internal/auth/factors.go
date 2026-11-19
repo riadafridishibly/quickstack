@@ -101,10 +101,14 @@ func (a *Auth) SecuritySections(ctx context.Context, accountID int64) ([]templ.C
 	return out, nil
 }
 
-// factorAdded records that u set up a factor and tells them by email. It
-// returns new recovery codes, to show once, when u had none left.
+// factorAdded records that u set up a factor, signs out u's other sessions,
+// which signed in without it, and tells u by email. It returns new recovery
+// codes, to show once, when u had none left.
 func (a *Auth) factorAdded(ctx context.Context, tx pgx.Tx, u *User, action, notice string) ([]string, error) {
 	q := db.New(tx)
+	if _, err := q.DeleteOtherSessions(ctx, db.DeleteOtherSessionsParams{AccountID: u.ID, TokenHash: u.tokenHash}); err != nil {
+		return nil, err
+	}
 	if err := q.RecordAudit(ctx, db.RecordAuditParams{ActorID: &u.ID, Action: action, Target: u.Email}); err != nil {
 		return nil, err
 	}
@@ -142,6 +146,10 @@ func (a *Auth) securityNotice(ctx context.Context, tx pgx.Tx, email, notice stri
 		To:      email,
 		Subject: "Security notice for your Quickstack account",
 		Text: notice + "\n\n" +
-			"If this wasn't you, reset your password at " + a.publicURL + forgotPath + " and review your account's security settings.\n",
+			"If this wasn't you, contact us right away. Resetting your password doesn't remove a second factor someone else set up.\n",
 	})
 }
+
+// noStore keeps a page that shows a secret, such as recovery codes, out of
+// the browser's cache and history.
+func noStore(w http.ResponseWriter) { w.Header().Set("Cache-Control", "no-store") }

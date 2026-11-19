@@ -74,11 +74,12 @@ func (recoveryCodes) Settings(ctx context.Context, q *db.Queries, accountID int6
 }
 
 func (rc recoveryCodes) Routes(mux *web.Mux) {
-	mux.Handle("POST "+recoveryPath, RequireRecent(web.Handle(rc.regenerate)))
+	mux.Handle("POST /account/security/recovery-codes", RequireRecent(web.Handle(rc.regenerate)))
 }
 
 // regenerate replaces the account's recovery codes and shows the new ones.
 func (rc recoveryCodes) regenerate(w http.ResponseWriter, r *http.Request) error {
+	noStore(w)
 	u := From(r.Context())
 	var codes []string
 	err := pgx.BeginTxFunc(r.Context(), rc.a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

@@ -92,7 +92,9 @@ func (a *Auth) confirm(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 		if f == nil {
-			return web.ErrNotFound
+			// A form from before a factor was set up.
+			v.Failed = ""
+			return web.Render(w, r, http.StatusUnprocessableEntity, confirmPage(v))
 		}
 		if !a.factorTries.Allow(strconv.FormatInt(u.ID, 10)) {
 			v.Error = "Too many attempts. Wait a few minutes and try again."
