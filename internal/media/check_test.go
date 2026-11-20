@@ -98,6 +98,7 @@ func TestCheck(t *testing.T) {
 		{"png", encodePNG(t, testImage(10, 20)), "image/png", 10, 20},
 		{"gif", g.Bytes(), "image/gif", 30, 20},
 		{"webp", webp, "image/webp", 40, 30},
+		{"svg", []byte(`<?xml version="1.0"?>` + "\n" + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 12"/>`), "image/svg+xml", 24, 12},
 	} {
 		up, err := CheckData(tt.data)
 		if err != nil {
@@ -117,7 +118,9 @@ func TestCheck(t *testing.T) {
 		{"empty", nil, "empty"},
 		{"too large", make([]byte, MaxBytes+1), "larger than 20 MB"},
 		{"text", []byte("hello, world"), "isn’t an image"},
-		{"svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>`), "isn’t an image"},
+		{"svg too large", []byte(svgDoc(strings.Repeat(" ", MaxSVGBytes))), "larger than 2 MB"},
+		{"svg without a size", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), "no size"},
+		{"html", []byte(`<html><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/></html>`), "isn’t an image"},
 		{"ppm", []byte("P6\n1 1\n255\n\x00\x00\x00"), "isn’t an image"},
 		{"too many pixels", blackPNG(t, 8000, 7000), "56 megapixels"},
 	} {

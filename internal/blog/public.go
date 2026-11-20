@@ -124,7 +124,7 @@ func loadArticle(ctx context.Context, q *db.Queries, p db.Post, author *string) 
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return a, err
 		}
-		if err == nil && showable(cover) {
+		if err == nil && media.Showable(cover) {
 			a.Cover = &cover
 		}
 	}
@@ -133,15 +133,13 @@ func loadArticle(ctx context.Context, q *db.Queries, p db.Post, author *string) 
 	return a, err
 }
 
-func showable(a db.Asset) bool { return a.Status == media.Ready && len(a.Widths) > 0 }
-
 // readyAsset returns the asset with key if it is ready to show, or nil.
 func readyAsset(ctx context.Context, q *db.Queries, key string) (*db.Asset, error) {
 	a, err := q.GetAssetByKey(ctx, key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	if err != nil || !showable(a) {
+	if err != nil || !media.Showable(a) {
 		return nil, err
 	}
 	return &a, nil

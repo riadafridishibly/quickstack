@@ -72,6 +72,10 @@ func Process(ctx context.Context, pool *pgxpool.Pool, store blob.Store, id int64
 		return err
 	}
 
+	render := renderRaster
+	if IsSVG(a) {
+		render = renderSVG
+	}
 	files, width, height, err := render(data)
 	if err != nil {
 		slog.WarnContext(ctx, "media: unreadable image", "key", a.Key, "err", err)
@@ -120,10 +124,20 @@ func variantWidths(w int) []int {
 	return out
 }
 
-// render decodes data and encodes the variants and the social card,
+// renderSVG writes the sanitized SVG. width and height are the size it
+// declares.
+func renderSVG(data []byte) (files []file, width, height int, err error) {
+	out, width, height, err := sanitizeSVG(data)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return []file{{name: SVGFile, contentType: svgContentType, data: out}}, width, height, nil
+}
+
+// renderRaster decodes data and encodes the variants and the social card,
 // upright, in sRGB, and without metadata. width and height are the size
 // of the upright original.
-func render(data []byte) (files []file, width, height int, err error) {
+func renderRaster(data []byte) (files []file, width, height int, err error) {
 	startVips()
 	img, err := vips.NewImageFromBuffer(data, &vips.LoadOptions{FailOn: vips.FailOnError})
 	if err != nil {

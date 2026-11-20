@@ -25,11 +25,7 @@ templ img(im image) {
 		</span>
 	} else if a != nil {
 		<img
-			src={ media.VariantURL(a.Key, a.Widths[len(a.Widths)-1]) }
-			srcset={ media.Srcset(*a) }
-			sizes={ sizes }
-			width={ strconv.Itoa(int(a.Width)) }
-			height={ strconv.Itoa(int(a.Height)) }
+			{ media.ImgAttrs(*a, sizes)... }
 			alt={ im.Alt }
 			loading="lazy"
 			decoding="async"

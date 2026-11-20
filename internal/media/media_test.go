@@ -161,6 +161,58 @@ func TestUploadAndProcess(t *testing.T) {
 	}
 }
 
+func TestSVG(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	c := editor(t, s)
+	svg := `<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 48 24" inkscape:version="1.3">
+<script>alert(1)</script><rect width="48" height="24" fill="#c00" onclick="alert(2)"/></svg>`
+
+	w := upload(s, c, []byte(svg), "", nil)
+	a := onlyAsset(t, s)
+	apptest.Redirect(t, w, "/admin/media/"+a.Key)
+	if a.ContentType != "image/svg+xml" || a.Width != 48 || a.Height != 24 {
+		t.Fatalf("asset %+v", a)
+	}
+	if err := media.Process(t.Context(), s.Pool, s.Blob, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	a = onlyAsset(t, s)
+	if a.Status != media.Ready || len(a.Widths) != 0 {
+		t.Fatalf("after processing: %+v", a)
+	}
+
+	w = s.Get(media.FileURL(a.Key, media.SVGFile), nil)
+	apptest.Status(t, w, http.StatusOK)
+	h := w.Header()
+	for k, v := range map[string]string{
+		"Content-Type":            "image/svg+xml",
+		"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "public, max-age=31536000, immutable",
+	} {
+		if h.Get(k) != v {
+			t.Errorf("%s: %q, want %q", k, h.Get(k), v)
+		}
+	}
+	const want = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24">` + "\n" + `<rect width="48" height="24" fill="#c00"/></svg>`
+	if b := w.Body.String(); b != want {
+		t.Errorf("image.svg:\n%s\nwant\n%s", b, want)
+	}
+	for _, p := range []string{"original.svg", "48.webp", media.CardFile} {
+		apptest.Status(t, s.Get(media.FileURL(a.Key, p), nil), http.StatusNotFound)
+	}
+
+	if b := s.Get("/admin/media", c).Body.String(); !strings.Contains(b, `src="`+media.FileURL(a.Key, media.SVGFile)+`"`) {
+		t.Error("the list doesn't show the SVG")
+	}
+	w = s.Do(apptest.Req{Path: "/admin/media/" + a.Key, Cookie: c, Target: "asset-preview"})
+	if b := w.Body.String(); !strings.Contains(b, `<img src="/media/`+a.Key+`/image.svg" width="48" height="24"`) || strings.Contains(b, "srcset") {
+		t.Errorf("preview:\n%s", b)
+	}
+}
+
 func TestTurnedJPEG(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
@@ -232,6 +284,18 @@ func TestUploadRejected(t *testing.T) {
 		t.Error("no message for a file that is too large")
 	}
 	apptest.Status(t, s.Post("/admin/media", c, url.Values{}), http.StatusUnprocessableEntity)
+
+	entity := []byte(`<!DOCTYPE svg [<!ENTITY a "a">]><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">&a;</svg>`)
+	w = upload(s, c, entity, "", nil)
+	apptest.Status(t, w, http.StatusUnprocessableEntity)
+	if b := w.Body.String(); !strings.Contains(b, "<html") || !strings.Contains(b, "declares entities") {
+		t.Errorf("plain SVG rejection:\n%.2000s", b)
+	}
+	w = upload(s, c, entity, "upload-form", nil)
+	apptest.Status(t, w, http.StatusUnprocessableEntity)
+	if b := w.Body.String(); strings.Contains(b, "<html") || !strings.Contains(b, "declares entities") {
+		t.Errorf("htmx SVG rejection:\n%s", b)
+	}
 
 	if rows, _ := db.New(s.Pool).ListAssets(t.Context(), db.ListAssetsParams{Lim: 10}); len(rows) != 0 {
 		t.Errorf("rejected uploads were stored: %+v", rows)

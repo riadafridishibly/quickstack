@@ -18,6 +18,7 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/markdown"
+	"github.com/riadafridishibly/quickstack/internal/media"
 )
 
 // Post statuses, as stored.
@@ -115,6 +116,10 @@ func save(ctx context.Context, tx pgx.Tx, actorID int64, old *db.Post, f *postFo
 		}
 		if err != nil {
 			return db.Post{}, err
+		}
+		if media.IsSVG(a) {
+			f.Errors["cover"] = "A cover can’t be an SVG: it is also the picture shown when the post is shared, and social sites don’t show SVG. Use a JPEG, PNG or WebP image."
+			return db.Post{}, errInvalid
 		}
 		coverID = &a.ID
 	}

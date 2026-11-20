@@ -2182,15 +2182,15 @@ func imagePicker(images []db.ListAssetsRow) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if a.Status == media.Ready && len(a.Widths) > 0 {
+				if src := media.Thumb(a.Key, a.ContentType, a.Widths); a.Status == media.Ready && src != "" {
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "<img src=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var109 string
-					templ_7745c5c3_Var109, templ_7745c5c3_Err = templruntime.NewAttributeExpression(media.VariantURL(a.Key, a.Widths[0])).ResolveURL(ctx)
+					templ_7745c5c3_Var109, templ_7745c5c3_Err = templruntime.NewAttributeExpression(src).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/blog/admin.templ`, Line: 290, Col: 54}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/blog/admin.templ`, Line: 290, Col: 21}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var109)
 					if templ_7745c5c3_Err != nil {

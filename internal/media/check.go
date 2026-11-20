@@ -37,7 +37,7 @@ var (
 	errNoFile   = &Rejected{"Choose an image to upload."}
 	errEmpty    = &Rejected{"This file is empty."}
 	errTooLarge = &Rejected{"This file is larger than 20 MB. Make it smaller and try again."}
-	errFormat   = &Rejected{"This file isn’t an image we can use. Upload a JPEG, PNG, WebP, GIF or HEIC file."}
+	errFormat   = &Rejected{"This file isn’t an image we can use. Upload a JPEG, PNG, WebP, GIF, HEIC or SVG file."}
 )
 
 // Check reads the multipart form field "file" from r and checks that it is
@@ -77,13 +77,23 @@ func readError(err error) error {
 	return err
 }
 
-// CheckData checks an image read some other way, as Check does.
+// CheckData checks an image read some other way, as Check does. An SVG is
+// checked by the sanitizer, not libvips.
 func CheckData(data []byte) (Upload, error) {
 	switch {
 	case len(data) == 0:
 		return Upload{}, errEmpty
 	case len(data) > MaxBytes:
 		return Upload{}, errTooLarge
+	}
+	if looksLikeSVG(data) {
+		// The job sanitizes it again; this rejects what it would refuse
+		// while the uploader is still here to read why.
+		_, w, h, err := sanitizeSVG(data)
+		if err != nil {
+			return Upload{}, err
+		}
+		return Upload{Data: data, ContentType: svgContentType, SHA256: sha256.Sum256(data), Width: w, Height: h}, nil
 	}
 	format, w, h, err := identify(data)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 
@@ -41,12 +42,14 @@ const (
 )
 
 // The formats an upload may have, by the libvips loader that reads them.
+// SVG isn't read by libvips; see svg.go.
 var formats = map[string]struct{ contentType, ext string }{
 	"jpeg": {"image/jpeg", "jpg"},
 	"png":  {"image/png", "png"},
 	"webp": {"image/webp", "webp"},
 	"gif":  {"image/gif", "gif"},
 	"heif": {"image/heic", "heic"},
+	"svg":  {svgContentType, "svg"},
 }
 
 func extOf(contentType string) string {
@@ -94,6 +97,44 @@ func Srcset(a db.Asset) string {
 		parts[i] = VariantURL(a.Key, w) + " " + strconv.Itoa(int(w)) + "w"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// IsSVG reports whether a is an SVG. It is served as one sanitized file,
+// SVGFile, instead of WebP variants.
+func IsSVG(a db.Asset) bool { return a.ContentType == svgContentType }
+
+// Showable reports whether a is ready and has a file to show.
+func Showable(a db.Asset) bool { return a.Status == Ready && (IsSVG(a) || len(a.Widths) > 0) }
+
+// Thumb is the path of the smallest file an asset with these fields can
+// show, or "" if it has none.
+func Thumb(key, contentType string, widths []int32) string {
+	switch {
+	case contentType == svgContentType:
+		return FileURL(key, SVGFile)
+	case len(widths) > 0:
+		return VariantURL(key, widths[0])
+	}
+	return ""
+}
+
+// ImgAttrs are the attributes of an <img> that shows a, which Showable must
+// allow: its src, width and height, and for a raster its srcset and sizes.
+func ImgAttrs(a db.Asset, sizes string) templ.OrderedAttributes {
+	var attrs templ.OrderedAttributes
+	if IsSVG(a) {
+		attrs = templ.OrderedAttributes{{Key: "src", Value: FileURL(a.Key, SVGFile)}}
+	} else {
+		attrs = templ.OrderedAttributes{
+			{Key: "src", Value: VariantURL(a.Key, a.Widths[len(a.Widths)-1])},
+			{Key: "srcset", Value: Srcset(a)},
+			{Key: "sizes", Value: sizes},
+		}
+	}
+	return append(attrs,
+		templ.KeyValue[string, any]{Key: "width", Value: strconv.Itoa(int(a.Width))},
+		templ.KeyValue[string, any]{Key: "height", Value: strconv.Itoa(int(a.Height))},
+	)
 }
 
 func originalKey(a db.Asset) string { return a.Key + "/original." + extOf(a.ContentType) }

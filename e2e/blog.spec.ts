@@ -80,6 +80,22 @@ test("the editor previews as you type and uploads pasted images", async ({ page 
   await insert.click();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Tip", exact: true })).toBeHidden();
+
+  // An SVG is shown as itself, sanitized, rather than as WebP variants.
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20"><script>alert(1)</script><rect width="40" height="20" fill="#c00"/></svg>`;
+  await body.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await paste(page, { name: "logo.svg", type: "image/svg+xml", data: Buffer.from(svg) });
+  const svgImg = preview.locator('img[src$="/image.svg"]');
+  await expect(svgImg).toBeVisible({ timeout: 15_000 });
+  await expect(svgImg).toHaveAttribute("width", "40");
+  await expect(svgImg).not.toHaveAttribute("srcset");
+  await expect
+    .poll(() => svgImg.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0))
+    .toBe(true);
+  const res = await page.request.get((await svgImg.getAttribute("src")) ?? "");
+  expect(res.headers()["content-security-policy"]).toContain("sandbox");
+  expect(await res.text()).not.toContain("script");
 });
 
 test("the editor switches views and goes full screen", async ({ page }) => {
