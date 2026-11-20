@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
+	"image"
 	"io"
 	"math"
 	"net/http"
@@ -43,6 +44,7 @@ var (
 	errSVGHuge       = &Rejected{"This SVG is wider or taller than 100,000 pixels."}
 	errSVGComplex    = &Rejected{"This SVG has too many elements. Simplify it and try again."}
 	errSVGUseCycle   = &Rejected{"This SVG has a <use> element that refers to itself or to an element that contains it."}
+	errSVGThin       = &Rejected{"This SVG is too long and thin to make a social card of. Crop it and try again."}
 )
 
 var bom = []byte("\xef\xbb\xbf")
@@ -461,6 +463,25 @@ func svgSize(root *svgElem) (width, height int, err error) {
 		return 0, 0, errSVGHuge
 	}
 	return max(1, int(math.Round(w))), max(1, int(math.Round(h))), nil
+}
+
+// svgCardSize is the smallest size, at the aspect ratio of an SVG w×h,
+// that covers the social card.
+func svgCardSize(w, h int) image.Point {
+	s := max(float64(CardWidth)/float64(w), float64(CardHeight)/float64(h))
+	return image.Pt(max(CardWidth, int(math.Ceil(float64(w)*s))), max(CardHeight, int(math.Ceil(float64(h)*s))))
+}
+
+// checkSVGPixels refuses an SVG w×h whose social card would be drawn
+// larger than MaxPixels before it is cropped, when SVGs are drawn at all.
+func checkSVGPixels(w, h int) error {
+	if !SVGRaster {
+		return nil
+	}
+	if p := svgCardSize(w, h); int64(p.X)*int64(p.Y) > MaxPixels {
+		return errSVGThin
+	}
+	return nil
 }
 
 var (

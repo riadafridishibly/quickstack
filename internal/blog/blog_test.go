@@ -16,6 +16,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/auth"
 	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
 	"github.com/riadafridishibly/quickstack/internal/db"
+	"github.com/riadafridishibly/quickstack/internal/media"
 )
 
 func staff(t *testing.T, s *apptest.Server, email string, role auth.PlatformRole) *http.Cookie {
@@ -175,16 +176,20 @@ func TestValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, tc := range []struct {
+	type invalid struct {
 		name, msg string
 		form      url.Values
-	}{
+	}
+	cases := []invalid{
 		{"no title", "Enter a title.", url.Values{"title": {" "}, "slug": {"x"}}},
 		{"bad slug", "Use lowercase letters", url.Values{"title": {"A"}, "slug": {"Not A Slug"}}},
 		{"taken slug", "Another post has this slug.", url.Values{"title": {"A"}, "slug": {"taken"}}},
 		{"no cover", "There is no image /media/ab12cd34 in Media.", url.Values{"title": {"A"}, "cover": {"/media/ab12cd34"}}},
-		{"svg cover", "A cover can’t be an SVG", url.Values{"title": {"A"}, "cover": {"/media/svgk2345"}}},
-	} {
+	}
+	if !media.SVGRaster {
+		cases = append(cases, invalid{"svg cover", "A cover can’t be an SVG", url.Values{"title": {"A"}, "cover": {"/media/svgk2345"}}})
+	}
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			w := s.Post("/admin/blog", editor, tc.form)
 			apptest.Status(t, w, http.StatusUnprocessableEntity)

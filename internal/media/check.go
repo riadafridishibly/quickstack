@@ -93,6 +93,9 @@ func CheckData(data []byte) (Upload, error) {
 		if err != nil {
 			return Upload{}, err
 		}
+		if err := checkSVGPixels(w, h); err != nil {
+			return Upload{}, err
+		}
 		return Upload{Data: data, ContentType: svgContentType, SHA256: sha256.Sum256(data), Width: w, Height: h}, nil
 	}
 	format, w, h, err := identify(data)

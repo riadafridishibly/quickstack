@@ -117,7 +117,7 @@ func save(ctx context.Context, tx pgx.Tx, actorID int64, old *db.Post, f *postFo
 		if err != nil {
 			return db.Post{}, err
 		}
-		if media.IsSVG(a) {
+		if media.IsSVG(a) && !media.SVGRaster {
 			f.Errors["cover"] = "A cover can’t be an SVG: it is also the picture shown when the post is shared, and social sites don’t show SVG. Use a JPEG, PNG, WebP, GIF or HEIC image."
 			return db.Post{}, errInvalid
 		}

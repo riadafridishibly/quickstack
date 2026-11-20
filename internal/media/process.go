@@ -124,14 +124,40 @@ func variantWidths(w int) []int {
 	return out
 }
 
-// renderSVG writes the sanitized SVG. width and height are the size it
-// declares.
+// renderSVG writes the sanitized SVG and, when SVGRaster, the social card
+// drawn from it. width and height are the size it declares.
 func renderSVG(data []byte) (files []file, width, height int, err error) {
 	out, width, height, err := sanitizeSVG(data)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	return []file{{name: SVGFile, contentType: svgContentType, data: out}}, width, height, nil
+	files, err = rasterizeSVG(out, width, height)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	return append(files, file{name: SVGFile, contentType: svgContentType, data: out}), width, height, nil
+}
+
+func variantFile(w int, img *vips.Image) (file, error) {
+	b, err := img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{Q: 80, Effort: 4, SmartSubsample: true, Keep: vips.KeepNone})
+	if err != nil {
+		return file{}, fmt.Errorf("%d.webp: %w", w, err)
+	}
+	return file{name: strconv.Itoa(w) + ".webp", contentType: "image/webp", data: b, width: w}, nil
+}
+
+// cardFile encodes img, already cropped to the card's size, as og.jpg.
+func cardFile(img *vips.Image) (file, error) {
+	if img.HasAlpha() {
+		if err := img.Flatten(&vips.FlattenOptions{Background: []float64{255, 255, 255}, MaxAlpha: 255}); err != nil {
+			return file{}, fmt.Errorf("%s: %w", CardFile, err)
+		}
+	}
+	b, err := img.JpegsaveBuffer(&vips.JpegsaveBufferOptions{Q: 82, OptimizeCoding: true, Interlace: true, Keep: vips.KeepNone})
+	if err != nil {
+		return file{}, fmt.Errorf("%s: %w", CardFile, err)
+	}
+	return file{name: CardFile, contentType: "image/jpeg", data: b}, nil
 }
 
 // renderRaster decodes data and encodes the variants and the social card,
@@ -147,34 +173,23 @@ func renderRaster(data []byte) (files []file, width, height int, err error) {
 	img.Close()
 
 	for _, w := range variantWidths(width) {
-		b, err := thumbnail(data, w, height, vips.InterestingNone, func(img *vips.Image) ([]byte, error) {
-			return img.WebpsaveBuffer(&vips.WebpsaveBufferOptions{Q: 80, Effort: 4, SmartSubsample: true, Keep: vips.KeepNone})
-		})
+		f, err := thumbnail(data, w, height, vips.InterestingNone, func(img *vips.Image) (file, error) { return variantFile(w, img) })
 		if err != nil {
-			return nil, 0, 0, fmt.Errorf("%d.webp: %w", w, err)
+			return nil, 0, 0, err
 		}
-		files = append(files, file{name: strconv.Itoa(w) + ".webp", contentType: "image/webp", data: b, width: w})
+		files = append(files, f)
 	}
-
-	b, err := thumbnail(data, CardWidth, CardHeight, vips.InterestingAttention, func(img *vips.Image) ([]byte, error) {
-		if img.HasAlpha() {
-			if err := img.Flatten(&vips.FlattenOptions{Background: []float64{255, 255, 255}, MaxAlpha: 255}); err != nil {
-				return nil, err
-			}
-		}
-		return img.JpegsaveBuffer(&vips.JpegsaveBufferOptions{Q: 82, OptimizeCoding: true, Interlace: true, Keep: vips.KeepNone})
-	})
+	f, err := thumbnail(data, CardWidth, CardHeight, vips.InterestingAttention, cardFile)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("%s: %w", CardFile, err)
+		return nil, 0, 0, err
 	}
-	files = append(files, file{name: CardFile, contentType: "image/jpeg", data: b})
-	return files, width, height, nil
+	return append(files, f), width, height, nil
 }
 
 // thumbnail scales data to fit w×h, or to fill it and crop when crop isn't
 // InterestingNone, and encodes the result with save. It decodes data each
 // time, so JPEG and WebP can shrink while loading.
-func thumbnail(data []byte, w, h int, crop vips.Interesting, save func(*vips.Image) ([]byte, error)) ([]byte, error) {
+func thumbnail(data []byte, w, h int, crop vips.Interesting, save func(*vips.Image) (file, error)) (file, error) {
 	img, err := vips.NewThumbnailBuffer(data, w, &vips.ThumbnailBufferOptions{
 		Height:        h,
 		Crop:          crop,
@@ -185,7 +200,7 @@ func thumbnail(data []byte, w, h int, crop vips.Interesting, save func(*vips.Ima
 		OptionString: "fail_on=error",
 	})
 	if err != nil {
-		return nil, err
+		return file{}, err
 	}
 	defer img.Close()
 	return save(img)
