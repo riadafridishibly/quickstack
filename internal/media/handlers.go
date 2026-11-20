@@ -32,9 +32,15 @@ const (
 
 var variantRE = regexp.MustCompile(`^[1-9][0-9]{0,4}\.webp$`)
 
-// Routes serves asset files at /media/{key}/{file}: the WebP variants and
-// og.jpg. The original is never served; it keeps metadata such as where a
-// photo was taken. Register it outside the session middleware.
+// svgCSP applies to an SVG opened on its own, as a document on this origin.
+// sandbox stops any script the sanitizer missed; inside an <img> an SVG
+// runs none anyway.
+const svgCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+
+// Routes serves asset files at /media/{key}/{file}: the WebP variants,
+// og.jpg, and an SVG's sanitized image.svg. The original is never served;
+// it keeps metadata such as where a photo was taken. Register it outside
+// the session middleware.
 func Routes(mux *web.Mux, store blob.Store) {
 	mux.Get("/media/{key}/{file}", func(w http.ResponseWriter, r *http.Request) error {
 		key, name := r.PathValue("key"), r.PathValue("file")
@@ -44,6 +50,8 @@ func Routes(mux *web.Mux, store blob.Store) {
 			return web.ErrNotFound
 		case name == CardFile:
 			contentType = "image/jpeg"
+		case name == SVGFile:
+			contentType = svgContentType
 		case !variantRE.MatchString(name):
 			return web.ErrNotFound
 		}
@@ -57,6 +65,10 @@ func Routes(mux *web.Mux, store blob.Store) {
 		defer f.Close()
 		h := w.Header()
 		h.Set("Content-Type", contentType)
+		if name == SVGFile {
+			h.Set("Content-Security-Policy", svgCSP)
+			h.Set("X-Content-Type-Options", "nosniff")
+		}
 		// A key's files never change: a new upload gets a new key.
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeContent(w, r, name, time.Time{}, f)

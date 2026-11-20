@@ -11,7 +11,7 @@ import (
 )
 
 // Accept is the file input accept attribute for an upload.
-const Accept = "image/jpeg,image/png,image/webp,image/gif,image/heic,.heic"
+const Accept = "image/jpeg,image/png,image/webp,image/gif,image/heic,.heic,image/svg+xml,.svg"
 
 func size(bytes int64) string {
 	switch {
@@ -50,7 +50,7 @@ templ uploadForm(errMsg string) {
 			@web.Field("Upload an image", "file", errMsg) {
 				<input type="file" { web.InputAttrs("file", errMsg)... } accept={ Accept } required class="file-input w-full aria-[invalid=true]:file-input-error"/>
 			}
-			<p class="mt-1.5 text-sm opacity-70">JPEG, PNG, WebP, GIF or HEIC, up to 20 MB and 50 megapixels.</p>
+			<p class="mt-1.5 text-sm opacity-70">JPEG, PNG, WebP, GIF or HEIC, up to 20 MB and 50 megapixels, or SVG up to 2 MB.</p>
 		</div>
 		<button type="submit" class={ web.ButtonClass, "mb-7" }>Upload</button>
 	</form>
@@ -76,8 +76,8 @@ templ assetList(v listView) {
 							<tr>
 								<td>
 									<a href={ templ.SafeURL(assetURL(a.Key)) } class="flex items-center gap-3">
-										if a.Status == Ready && len(a.Widths) > 0 {
-											<img src={ VariantURL(a.Key, a.Widths[0]) } alt="" loading="lazy" class="size-14 shrink-0 rounded object-cover bg-base-200"/>
+										if src := Thumb(a.Key, a.ContentType, a.Widths); a.Status == Ready && src != "" {
+											<img src={ src } alt="" loading="lazy" class="size-14 shrink-0 rounded object-cover bg-base-200"/>
 										} else {
 											<span class="size-14 shrink-0 rounded bg-base-200" aria-hidden="true"></span>
 										}
@@ -138,7 +138,7 @@ templ assetPage(v assetView) {
 						</div>
 						<div>
 							<dt class="text-sm opacity-60">File</dt>
-							<dd>{ strings.TrimPrefix(a.ContentType, "image/") }, { size(a.Bytes) }</dd>
+							<dd>{ strings.TrimSuffix(strings.TrimPrefix(a.ContentType, "image/"), "+xml") }, { size(a.Bytes) }</dd>
 						</div>
 						<div>
 							<dt class="text-sm opacity-60">Uploaded</dt>
@@ -176,11 +176,7 @@ templ preview(a db.Asset) {
 		switch a.Status {
 			case Ready:
 				<img
-					src={ VariantURL(a.Key, a.Widths[len(a.Widths)-1]) }
-					srcset={ Srcset(a) }
-					sizes="(min-width: 1024px) 40vw, 100vw"
-					width={ strconv.Itoa(int(a.Width)) }
-					height={ strconv.Itoa(int(a.Height)) }
+					{ ImgAttrs(a, "(min-width: 1024px) 40vw, 100vw")... }
 					alt={ a.Alt }
 					class="h-auto w-full bg-base-200"
 				/>
@@ -189,7 +185,11 @@ templ preview(a db.Asset) {
 			default:
 				<p role="status" class="flex items-center gap-3 p-6">
 					<span class="loading loading-spinner loading-sm" aria-hidden="true"></span>
-					Making the resized copies…
+					if IsSVG(a) {
+						Checking the SVG…
+					} else {
+						Making the resized copies…
+					}
 				</p>
 		}
 	</section>

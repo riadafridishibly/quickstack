@@ -171,6 +171,9 @@ func TestValidation(t *testing.T) {
 	create(t, s, editor, url.Values{"title": {"Taken"}})
 	id := create(t, s, editor, url.Values{"title": {"Mine"}})
 	p := get(t, s, id)
+	if _, err := db.New(s.Pool).CreateAsset(t.Context(), db.CreateAssetParams{Key: "svgk2345", ContentType: "image/svg+xml", Sha256: []byte{0}, Width: 1, Height: 1}); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, tc := range []struct {
 		name, msg string
@@ -180,6 +183,7 @@ func TestValidation(t *testing.T) {
 		{"bad slug", "Use lowercase letters", url.Values{"title": {"A"}, "slug": {"Not A Slug"}}},
 		{"taken slug", "Another post has this slug.", url.Values{"title": {"A"}, "slug": {"taken"}}},
 		{"no cover", "There is no image /media/ab12cd34 in Media.", url.Values{"title": {"A"}, "cover": {"/media/ab12cd34"}}},
+		{"svg cover", "A cover can’t be an SVG", url.Values{"title": {"A"}, "cover": {"/media/svgk2345"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := s.Post("/admin/blog", editor, tc.form)

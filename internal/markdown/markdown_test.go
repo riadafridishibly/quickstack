@@ -20,6 +20,7 @@ var assets = []db.Asset{
 	{Key: "ready234", Status: media.Ready, Width: 1200, Height: 800, Widths: []int32{320, 640, 1024, 1200}, Alt: "Stored alt", Credit: "Stored credit"},
 	{Key: "bzzy2345", Status: media.Processing, Width: 900, Height: 600},
 	{Key: "fa772345", Status: media.Failed, Error: "not an image"},
+	{Key: "svgk2345", Status: media.Ready, ContentType: "image/svg+xml", Width: 48, Height: 24, Alt: "A logo"},
 }
 
 func resolver(calls *[][]string) Resolver {

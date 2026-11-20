@@ -1,7 +1,6 @@
 package blog
 
 import (
-	"strconv"
 	"time"
 
 	"github.com/riadafridishibly/quickstack/internal/db"
@@ -105,11 +104,7 @@ templ postPage(a article, m web.Meta) {
 			if c := a.Cover; c != nil {
 				<figure class="mt-8">
 					<img
-						src={ media.VariantURL(c.Key, c.Widths[len(c.Widths)-1]) }
-						srcset={ media.Srcset(*c) }
-						sizes="(min-width: 48rem) 48rem, 100vw"
-						width={ strconv.Itoa(int(c.Width)) }
-						height={ strconv.Itoa(int(c.Height)) }
+						{ media.ImgAttrs(*c, "(min-width: 48rem) 48rem, 100vw")... }
 						alt={ c.Alt }
 						class="h-auto w-full rounded-box bg-base-200"
 					/>

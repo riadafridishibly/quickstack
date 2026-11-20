@@ -1,11 +1,12 @@
 <p><img src="/media/ready234/1200.webp" srcset="/media/ready234/320.webp 320w, /media/ready234/640.webp 640w, /media/ready234/1024.webp 1024w, /media/ready234/1200.webp 1200w" sizes="(min-width: 48rem) 45rem, 100vw" width="1200" height="800" alt="Given alt" loading="lazy" decoding="async" class="h-auto max-w-full"></p>
 <p><img src="/media/ready234/1200.webp" srcset="/media/ready234/320.webp 320w, /media/ready234/640.webp 640w, /media/ready234/1024.webp 1024w, /media/ready234/1200.webp 1200w" sizes="(min-width: 48rem) 45rem, 100vw" width="1200" height="800" alt="Stored alt" loading="lazy" decoding="async" class="h-auto max-w-full"></p>
+<p><img src="/media/svgk2345/image.svg" width="48" height="24" alt="A logo" loading="lazy" decoding="async" class="h-auto max-w-full"></p>
 <p><img src="/static/logo.png" alt="Local" loading="lazy" decoding="async" class="h-auto max-w-full"></p>
 
 <!-- problems
-line 5: The image /media/bzzy2345 is still being processed.
-line 7: The image /media/fa772345 couldn’t be processed: not an image
-line 9: There is no image /media/gn772345 in Media.
-line 11: There is no image /media/NOT-A-KEY in Media.
-line 13: The image "https://example.com/cat.png" was left out: upload it to Media and use its Markdown.
+line 7: The image /media/bzzy2345 is still being processed.
+line 9: The image /media/fa772345 couldn’t be processed: not an image
+line 11: There is no image /media/gn772345 in Media.
+line 13: There is no image /media/NOT-A-KEY in Media.
+line 15: The image "https://example.com/cat.png" was left out: upload it to Media and use its Markdown.
 -->

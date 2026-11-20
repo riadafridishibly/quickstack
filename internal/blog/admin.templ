@@ -286,8 +286,8 @@ templ imagePicker(images []db.ListAssetsRow) {
 			<ul class="mt-4 divide-y divide-base-300">
 				for _, a := range images {
 					<li class="flex items-center gap-3 py-2">
-						if a.Status == media.Ready && len(a.Widths) > 0 {
-							<img src={ media.VariantURL(a.Key, a.Widths[0]) } alt="" loading="lazy" class="size-12 shrink-0 rounded object-cover bg-base-200"/>
+						if src := media.Thumb(a.Key, a.ContentType, a.Widths); a.Status == media.Ready && src != "" {
+							<img src={ src } alt="" loading="lazy" class="size-12 shrink-0 rounded object-cover bg-base-200"/>
 						} else {
 							<span class="size-12 shrink-0 rounded bg-base-200" aria-hidden="true"></span>
 						}
