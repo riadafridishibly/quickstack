@@ -1,0 +1,61 @@
+#!/bin/sh
+# Puts the resvg kit for a target from quickstack-resvg into a directory,
+# checked against the checksums below. Linux and FreeBSD kits are
+# downloaded. There is no macOS kit, so for darwin-* this downloads the
+# release's sources and builds one with cargo. To move to another release,
+# change version and paste that release's SHA256SUMS.
+#
+#   scripts/resvg-kit linux-amd64 dist/resvg/linux-amd64
+set -eu
+
+version=0.50.0-r1
+sums='
+501d362e38579c4a397633f7afc470a019edc000d906e8f8bf72e4eca34efb9b  quickstack-resvg-0.50.0-r1-freebsd-amd64.tar.gz
+23c4e8a65049d58869fae9a5319b553495c90f04f8460aab55c8001b0bf63e4d  quickstack-resvg-0.50.0-r1-linux-amd64.tar.gz
+50fca2f4c2ab847a6ecbfdf097410021f617420d05ba396a2fd5aeab9cb8b9ac  quickstack-resvg-0.50.0-r1-linux-arm64.tar.gz
+e14f01926691b2274c9cf26536bd947190b2e74c65c4946e0814fc4249200b3c  quickstack-resvg-0.50.0-r1-sources.tar.gz
+'
+
+if [ $# -ne 2 ]; then
+	echo "usage: scripts/resvg-kit <linux-amd64|linux-arm64|freebsd-amd64|darwin-arm64|darwin-amd64> <dir>" >&2
+	exit 2
+fi
+target=$1
+dir=$2
+case $target in
+darwin-*) file=quickstack-resvg-$version-sources.tar.gz ;;
+*) file=quickstack-resvg-$version-$target.tar.gz ;;
+esac
+line=$(printf '%s' "$sums" | grep "  $file\$") || {
+	echo "no $file in quickstack-resvg $version" >&2
+	exit 2
+}
+
+[ "$(cat "$dir/.kit" 2>/dev/null)" = "$version-$target" ] && exit 0
+
+case $target in
+darwin-*) command -v cargo >/dev/null || {
+	echo "Building resvg on macOS needs Rust: see https://rustup.rs" >&2
+	exit 1
+} ;;
+esac
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+curl -fsSL -o "$tmp/$file" "https://github.com/riadafridishibly/quickstack-resvg/releases/download/v$version/$file"
+if command -v sha256sum >/dev/null; then
+	(cd "$tmp" && echo "$line" | sha256sum -c --quiet -)
+else
+	(cd "$tmp" && echo "$line" | shasum -a 256 -c --quiet -)
+fi
+rm -rf "$dir"
+mkdir -p "$dir"
+case $target in
+darwin-*)
+	mkdir "$tmp/src"
+	tar -xzf "$tmp/$file" -C "$tmp/src"
+	"$tmp/src/build.sh" kit host "$dir"
+	;;
+*) tar -xzf "$tmp/$file" -C "$dir" ;;
+esac
+echo "$version-$target" >"$dir/.kit"

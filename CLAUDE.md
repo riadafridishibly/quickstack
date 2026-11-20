@@ -14,11 +14,14 @@ Design notes and decisions live in the issue tracker, not in the repo. Keep code
 - `make gen`: regenerate Go from `.templ` and `.sql` files, and `frontend/src/chroma.css` for code highlighting. Run it after editing either.
 - `make migration name=<name>`: new timestamped migration file.
 - `make check`: gen, the dependency check, templ fmt, go vet, golangci-lint, go test, tsc, Biome, and the Vite build. **Work is done only when this passes.** The pre-push hook runs it.
+- `make check-resvg`: go vet, golangci-lint and go test of `internal/media` and `internal/blog` with the `resvg` tag. Run it when you change SVG handling; `make check` doesn't build that tag.
 - `make e2e`: Playwright against the built app. Run it when you change anything a browser does (htmx attributes, islands, forms).
 - `make fmt`: format Go, templ, and TypeScript.
 - `go run ./cmd/quickstack create-user|reset-password|set-platform-role ...`: manage accounts from the command line. `set-platform-role you@example.com superadmin` opens `/admin`.
 
 Building needs libvips 8.16+ (`brew install vips`, `apt install libvips-dev`), which comes in through cgo. Releases don't use it: `make dist TARGET=linux-amd64|linux-arm64|freebsd-amd64` cross-compiles with zig against a libvips kit from quickstack-vips (`scripts/vips-kit` pins the version) and packs the libraries next to the binary; `make docker` builds an image the same way.
+
+`TAGS=resvg` on `make dev`, `build`, `dist` or `docker` builds with the `resvg` tag, which draws a social card from each SVG upload (see Media). It links resvg statically from a quickstack-resvg kit (`scripts/resvg-kit` pins the version). There is no macOS kit, so on a Mac the script builds one from the release's sources with cargo, which needs Rust and rustup's `llvm-tools`.
 
 There is no CI; run checks locally.
 
@@ -126,6 +129,7 @@ Images uploaded at `/admin/media` (or pasted into the post editor), for the blog
 - Files live in a `blob.Store` named by `QUICKSTACK_BLOB_URL`: `file:///dir`, `file://./relative/dir`, or `s3://key:secret@bucket/prefix?endpoint=host:port&region=r&insecure=1` for any S3-compatible bucket. In development it is `./tmp/media`; `make s3-up` runs SeaweedFS to try a bucket.
 - To accept an upload: `media.Check(r)` before the transaction (a `*media.Rejected` error is a 422 with its message; `media.CheckData` takes bytes you already have), then `media.Create(ctx, tx, store, jc, userID, up)` inside it, and `media.Discard` if it doesn't commit. `media.Delete` removes an asset and queues the deletion of its files.
 - `Create` stores the original and queues `media_process` on the `media` queue. The job re-encodes it with libvips into WebP at `media.Widths` (never wider than the original) and an `og.jpg` social card, then marks the asset ready. `media.Process` does the same work directly, as the seed does. Only the JPEG, PNG, WebP, GIF and HEIF loaders of libvips may run.
+- An SVG never reaches libvips. `CheckData` and the job run it through the sanitizer in `svg.go`, an allowlist over `encoding/xml` tokens, and the job writes the result as `image.svg`, served with a CSP that has `sandbox`. Its width and height are the size it declares, and pages show the vector. In the default build it has no `widths` and no `og.jpg`, so a blog cover can't be an SVG. With the `resvg` tag (`svg_resvg.go`; `svg_none.go` without it) the job also draws `og.jpg` from it with resvg, with text in the embedded DejaVu Sans (`fonts/`). `media.SVGRaster` says which build this is. Use `media.ImgAttrs`, `Thumb` and `Showable` rather than branching on the content type.
 - An asset is named by its 8-character key, never its id. `media.URL(key)` (`/media/{key}`) is the address Markdown uses; `/media/{key}/{640.webp|og.jpg}` serves the files with a year-long cache, since a key's files never change. The original is never served: it keeps metadata such as where a photo was taken.
 
 ## Blog

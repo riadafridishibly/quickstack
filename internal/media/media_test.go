@@ -200,9 +200,14 @@ func TestSVG(t *testing.T) {
 	if b := w.Body.String(); b != want {
 		t.Errorf("image.svg:\n%s\nwant\n%s", b, want)
 	}
-	for _, p := range []string{"original.svg", "48.webp", media.CardFile} {
+	for _, p := range []string{"original.svg", "48.webp"} {
 		apptest.Status(t, s.Get(media.FileURL(a.Key, p), nil), http.StatusNotFound)
 	}
+	card := http.StatusNotFound
+	if media.SVGRaster {
+		card = http.StatusOK
+	}
+	apptest.Status(t, s.Get(media.FileURL(a.Key, media.CardFile), nil), card)
 
 	if b := s.Get("/admin/media/"+a.Key, c).Body.String(); !strings.Contains(b, "<dd>svg, ") {
 		t.Error("the page doesn't give the file type as svg")

@@ -19,10 +19,21 @@ ifeq ($(shell uname -s),Darwin)
 export CGO_LDFLAGS += -Wl,-no_warn_duplicate_libraries
 endif
 
-.PHONY: help setup check-vips hooks db-setup db-reset db-up s3-up psql migration dev dev-vite dev-go seed gen fmt build dist docker check check-deps test e2e clean
+# Go build tags for dev, build, dist and docker. TAGS=resvg also draws a
+# social card from each SVG upload, with resvg from a quickstack-resvg kit
+# (scripts/resvg-kit).
+TAGS ?=
+HOST := $(shell go env GOOS)-$(shell go env GOARCH)
+RESVG_PC := $(CURDIR)/dist/resvg/$(HOST)/lib/pkgconfig
+ifneq (,$(findstring resvg,$(TAGS)))
+export PKG_CONFIG_PATH := $(RESVG_PC)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
+RESVG_KIT := resvg-kit
+endif
+
+.PHONY: help setup check-vips resvg-kit hooks db-setup db-reset db-up s3-up psql migration dev dev-vite dev-go seed gen fmt build dist docker check check-resvg check-deps test e2e clean
 
 help: ## List targets
-	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-11s %s\n", $$1, $$2}'
+	@grep -hE '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-11s %s\n", $$1, $$2}'
 
 setup: check-vips hooks ## Install pnpm packages and Playwright's Chromium
 	pnpm install
@@ -31,6 +42,9 @@ setup: check-vips hooks ## Install pnpm packages and Playwright's Chromium
 check-vips:
 	@pkg-config --exists 'vips >= 8.16' || { \
 		echo "libvips 8.16 or later is needed to build: brew install vips, or apt install libvips-dev"; exit 1; }
+
+resvg-kit:
+	scripts/resvg-kit $(HOST) dist/resvg/$(HOST)
 
 hooks: ## Run make check before every git push
 	git config core.hooksPath .githooks
@@ -62,7 +76,7 @@ migration: ## New migration: make migration name=create_things
 		f=$$dir/$${ts}_$(name).sql; \
 		printf -- '-- +goose Up\n\n-- +goose Down\n' > $$f && echo $$f
 
-dev: ## Vite + Go with live reload; open http://localhost:7360
+dev: $(RESVG_KIT) ## Vite + Go with live reload; open http://localhost:7360 [TAGS=resvg]
 	@$(MAKE) -j2 dev-vite dev-go
 
 dev-vite:
@@ -70,7 +84,7 @@ dev-vite:
 
 dev-go: export QUICKSTACK_DEV = 1
 dev-go:
-	go tool templ generate -watch -proxy=http://localhost:8360 -proxyport=7360 -open-browser=false -cmd="go run ./cmd/quickstack"
+	go tool templ generate -watch -proxy=http://localhost:8360 -proxyport=7360 -open-browser=false -cmd="go run -tags=$(TAGS) ./cmd/quickstack"
 
 # QUICKSTACK_DEV puts the sample images where `make dev` serves them from.
 seed: export QUICKSTACK_DEV = 1
@@ -87,38 +101,42 @@ fmt: ## Format Go, templ, and TypeScript
 	$(GOLANGCI_LINT) fmt
 	pnpm run fix
 
-build: gen ## Build the frontend and bin/quickstack
+build: gen $(RESVG_KIT) ## Build the frontend and bin/quickstack
 	pnpm run build
-	go build -o bin/quickstack ./cmd/quickstack
+	go build -tags=$(TAGS) -o bin/quickstack ./cmd/quickstack
 
 # dist cross-compiles with zig against a libvips kit from quickstack-vips
-# (scripts/vips-kit), so the release carries its own libvips.
+# (scripts/vips-kit), so the release carries its own libvips. resvg is a
+# static library, so only its licences go into the release.
 TARGET ?= linux-amd64
 zig_target.linux-amd64   := x86_64-linux-gnu.2.28
 zig_target.linux-arm64   := aarch64-linux-gnu.2.28
 zig_target.freebsd-amd64 := x86_64-freebsd.14.0
 DIST := dist/quickstack-$(TARGET)
 
-dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or freebsd-amd64
+dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or freebsd-amd64 [TAGS=resvg]
 	@test -n "$(zig_target.$(TARGET))" || { echo "TARGET must be linux-amd64, linux-arm64 or freebsd-amd64"; exit 1; }
 	@command -v zig >/dev/null || { echo "zig is needed: brew install zig, or see ziglang.org"; exit 1; }
 	pnpm run build
 	scripts/vips-kit $(TARGET) dist/vips/$(TARGET)
+	$(if $(RESVG_KIT),scripts/resvg-kit $(TARGET) dist/resvg/$(TARGET))
 	rm -rf $(DIST) $(DIST).tar.gz
 	mkdir -p $(DIST)/bin $(DIST)/lib $(DIST)/share
 	GOOS=$(word 1,$(subst -, ,$(TARGET))) GOARCH=$(word 2,$(subst -, ,$(TARGET))) CGO_ENABLED=1 \
 		CC="zig cc -target $(zig_target.$(TARGET))" \
-		PKG_CONFIG_LIBDIR=$(CURDIR)/dist/vips/$(TARGET)/lib/pkgconfig \
+		PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=$(CURDIR)/dist/vips/$(TARGET)/lib/pkgconfig:$(CURDIR)/dist/resvg/$(TARGET)/lib/pkgconfig \
 		CGO_LDFLAGS='-Wl,-rpath,$$ORIGIN/../lib' \
-		go build -a -trimpath -ldflags='-s -w' -o $(DIST)/bin/quickstack ./cmd/quickstack
+		go build -a -trimpath -tags=$(TAGS) -ldflags='-s -w' -o $(DIST)/bin/quickstack ./cmd/quickstack
 	cp -a dist/vips/$(TARGET)/lib/*.so.* $(DIST)/lib/
 	cp -R dist/vips/$(TARGET)/share/licenses $(DIST)/share/
+	$(if $(RESVG_KIT),cp -R dist/resvg/$(TARGET)/share/licenses $(DIST)/share/licenses/quickstack-resvg)
+	$(if $(RESVG_KIT),mkdir -p $(DIST)/share/licenses/dejavu-fonts && cp internal/media/fonts/LICENSE $(DIST)/share/licenses/dejavu-fonts/)
 	cp scripts/install $(DIST)/install
 	COPYFILE_DISABLE=1 tar --no-xattrs -czf $(DIST).tar.gz -C dist quickstack-$(TARGET)
 	@echo $(DIST).tar.gz
 
-docker: ## Build the quickstack Docker image
-	docker build -t quickstack .
+docker: ## Build the quickstack Docker image [TAGS=resvg]
+	docker build --build-arg TAGS=$(TAGS) -t quickstack .
 
 test: ## Go tests (needs PostgreSQL, see QUICKSTACK_TEST_DATABASE_URL)
 	go test ./...
@@ -130,6 +148,14 @@ check: gen check-deps ## Everything that must pass before work is done
 	go test ./...
 	pnpm run check
 	pnpm run build
+
+# The resvg tag's code and tests, which make check doesn't build.
+check-resvg: ## go vet, golangci-lint and go test with TAGS=resvg, for the packages it changes
+	scripts/resvg-kit $(HOST) dist/resvg/$(HOST)
+	PKG_CONFIG_PATH=$(RESVG_PC)$${PKG_CONFIG_PATH:+:$$PKG_CONFIG_PATH} sh -c '\
+		go vet -tags=resvg ./internal/media/... ./internal/blog/... && \
+		$(GOLANGCI_LINT) run --build-tags=resvg ./internal/media/... ./internal/blog/... && \
+		go test -tags=resvg ./internal/media/... ./internal/blog/...'
 
 check-deps:
 	@deps=$$(go list -deps ./cmd/quickstack) && \
