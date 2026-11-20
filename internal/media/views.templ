@@ -138,7 +138,7 @@ templ assetPage(v assetView) {
 						</div>
 						<div>
 							<dt class="text-sm opacity-60">File</dt>
-							<dd>{ strings.TrimPrefix(a.ContentType, "image/") }, { size(a.Bytes) }</dd>
+							<dd>{ strings.TrimSuffix(strings.TrimPrefix(a.ContentType, "image/"), "+xml") }, { size(a.Bytes) }</dd>
 						</div>
 						<div>
 							<dt class="text-sm opacity-60">Uploaded</dt>
@@ -185,7 +185,11 @@ templ preview(a db.Asset) {
 			default:
 				<p role="status" class="flex items-center gap-3 p-6">
 					<span class="loading loading-spinner loading-sm" aria-hidden="true"></span>
-					Making the resized copies…
+					if IsSVG(a) {
+						Checking the SVG…
+					} else {
+						Making the resized copies…
+					}
 				</p>
 		}
 	</section>

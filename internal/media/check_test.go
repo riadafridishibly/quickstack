@@ -120,6 +120,7 @@ func TestCheck(t *testing.T) {
 		{"text", []byte("hello, world"), "isn’t an image"},
 		{"svg too large", []byte(svgDoc(strings.Repeat(" ", MaxSVGBytes))), "larger than 2 MB"},
 		{"svg without a size", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), "no size"},
+		{"svg not in utf-8", []byte(`<?xml version="1.0" encoding="ISO-8859-1"?><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`), "isn’t saved as UTF-8"},
 		{"html", []byte(`<html><svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/></html>`), "isn’t an image"},
 		{"ppm", []byte("P6\n1 1\n255\n\x00\x00\x00"), "isn’t an image"},
 		{"too many pixels", blackPNG(t, 8000, 7000), "56 megapixels"},

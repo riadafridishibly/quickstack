@@ -204,6 +204,9 @@ func TestSVG(t *testing.T) {
 		apptest.Status(t, s.Get(media.FileURL(a.Key, p), nil), http.StatusNotFound)
 	}
 
+	if b := s.Get("/admin/media/"+a.Key, c).Body.String(); !strings.Contains(b, "<dd>svg, ") {
+		t.Error("the page doesn't give the file type as svg")
+	}
 	if b := s.Get("/admin/media", c).Body.String(); !strings.Contains(b, `src="`+media.FileURL(a.Key, media.SVGFile)+`"`) {
 		t.Error("the list doesn't show the SVG")
 	}

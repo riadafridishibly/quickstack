@@ -37,6 +37,7 @@ const (
 var (
 	errSVGTooLarge   = &Rejected{"This SVG is larger than 2 MB. Simplify it and try again."}
 	errSVGUnreadable = &Rejected{"This SVG couldn’t be read. It may be damaged or cut off; try exporting it again."}
+	errSVGEncoding   = &Rejected{"This SVG isn’t saved as UTF-8. Save it as UTF-8 and try again."}
 	errSVGDoctype    = &Rejected{"This SVG declares entities in its DOCTYPE, which isn’t allowed. Export it again as plain SVG."}
 	errSVGNoSize     = &Rejected{"This SVG has no size we can use. Give its svg element a width and height in pixels, or a viewBox."}
 	errSVGHuge       = &Rejected{"This SVG is wider or taller than 100,000 pixels."}
@@ -54,6 +55,9 @@ func looksLikeSVG(data []byte) bool {
 		return false
 	}
 	d := xml.NewDecoder(bytes.NewReader(data))
+	// Let an SVG in another encoding through, so sanitizeSVG can say why it
+	// refuses it.
+	d.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil }
 	for {
 		tok, err := d.RawToken()
 		if err != nil {
@@ -121,6 +125,17 @@ func sanitizeSVG(data []byte) (out []byte, width, height int, err error) {
 
 func parseSVG(data []byte) (*svgElem, error) {
 	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, bom)))
+	// encoding/xml reads UTF-8 and calls this for any other declared
+	// encoding. ASCII is a subset of UTF-8.
+	badEncoding := false
+	d.CharsetReader = func(label string, r io.Reader) (io.Reader, error) {
+		switch strings.ToLower(label) {
+		case "utf8", "us-ascii", "ascii":
+			return r, nil
+		}
+		badEncoding = true
+		return nil, errSVGEncoding
+	}
 	var (
 		root  *svgElem
 		open  []*svgElem
@@ -135,6 +150,9 @@ func parseSVG(data []byte) (*svgElem, error) {
 			break
 		}
 		if err != nil {
+			if badEncoding {
+				return nil, errSVGEncoding
+			}
 			return nil, errSVGUnreadable
 		}
 		switch t := tok.(type) {
@@ -157,7 +175,11 @@ func parseSVG(data []byte) (*svgElem, error) {
 				skip = depth
 				continue
 			}
-			e := cleanElement(t)
+			parent := ""
+			if len(open) > 0 {
+				parent = open[len(open)-1].name
+			}
+			e := cleanElement(t, parent)
 			if e == nil {
 				skip = depth
 				continue
@@ -206,26 +228,28 @@ func parseSVG(data []byte) (*svgElem, error) {
 func inSVG(n xml.Name) bool { return n.Space == svgNS || n.Space == "" }
 
 // cleanElement returns t with only the allowed attributes, or nil if t
-// isn't allowed.
-func cleanElement(t xml.StartElement) *svgElem {
+// isn't allowed. parent is the name of the element it is in.
+func cleanElement(t xml.StartElement, parent string) *svgElem {
 	if !inSVG(t.Name) {
 		return nil
 	}
 	name := t.Name.Local
-	if name == "a" {
-		// A link can't be followed from an image; its contents still draw.
+	link := name == "a"
+	switch {
+	case link && (parent == "text" || parent == "tspan" || parent == "textPath"):
+		// A link can't be followed from an image, but what it holds still
+		// draws: a <g> isn't allowed inside text, a <tspan> is.
+		name = "tspan"
+	case link:
 		name = "g"
-	} else if !svgElements[name] {
+	case !svgElements[name]:
 		return nil
 	}
 	e := &svgElem{name: name}
-	if name == "style" || t.Name.Local == "a" {
-		return e
-	}
 	seen := map[string]int{}
 	for _, a := range t.Attr {
 		n, v, ok := cleanAttr(name, a)
-		if !ok {
+		if !ok || (link && n == "href") || (name == "style" && n != "media") {
 			continue
 		}
 		if i, dup := seen[n]; dup {
@@ -246,6 +270,8 @@ func cleanElement(t xml.StartElement) *svgElem {
 func cleanAttr(elem string, a xml.Attr) (name, value string, ok bool) {
 	switch {
 	case a.Name.Space == "" && svgAttrs[a.Name.Local]:
+		return a.Name.Local, a.Value, true
+	case a.Name.Space == "" && cssAttrs[a.Name.Local]:
 		name = a.Name.Local
 	case a.Name.Space == "" && a.Name.Local == "href",
 		(a.Name.Space == xlinkNS || a.Name.Space == "xlink") && a.Name.Local == "href":
@@ -282,7 +308,11 @@ func safeHref(elem, v string) bool {
 var (
 	cssCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/`)
 	cssLocalURL  = regexp.MustCompile(`(?i)url\(\s*['"]?#[\p{L}\p{N}_.:-]+['"]?\s*\)`)
-	cssBad       = []string{"url(", "@import", "expression", "image-set", "-moz-binding", "behavior", "javascript:", `\`, "/*"}
+	// cssBad is what may load a file or run script once local url()s are
+	// gone: a url() of anything else, a CSS escape that could spell one, an
+	// import, or a string URL in image-set() or src(). expression() and
+	// behavior are old IE.
+	cssBad = regexp.MustCompile(`(?i)url\(|\\|/\*|@import|-moz-binding|javascript:|image-set\s*\(|\bsrc\s*\(|expression\s*\(|behavior\s*:`)
 )
 
 // cleanCSS removes comments from a style or a presentation attribute and
@@ -292,11 +322,8 @@ var (
 // checked, so a comment can't split a word the check looks for.
 func cleanCSS(s string) (string, bool) {
 	s = cssCommentRE.ReplaceAllString(s, "")
-	l := strings.ToLower(cssLocalURL.ReplaceAllString(s, ""))
-	for _, bad := range cssBad {
-		if strings.Contains(l, bad) {
-			return "", false
-		}
+	if cssBad.MatchString(cssLocalURL.ReplaceAllString(s, "")) {
+		return "", false
 	}
 	return s, true
 }
@@ -487,12 +514,16 @@ var svgElements = setOf(
 	"fePointLight", "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence",
 )
 
-// svgAttrs are the attributes kept, other than href, xml:space and
-// xml:lang. Event handlers (on*) aren't among them.
+// svgAttrs and cssAttrs are the attributes kept, other than href,
+// xml:space and xml:lang. Event handlers (on*) aren't among them. svgAttrs
+// can't refer to another file; cssAttrs are CSS, which can, so they go
+// through cleanCSS.
 var svgAttrs = setOf(
 	// Core and structure.
-	"id", "class", "style", "transform", "viewBox", "preserveAspectRatio",
+	"id", "class", "transform", "viewBox", "preserveAspectRatio",
 	"x", "y", "width", "height",
+	// Which child of a <switch> draws.
+	"systemLanguage", "requiredFeatures", "requiredExtensions",
 	// Shapes.
 	"d", "points", "pathLength", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
 	// Text.
@@ -504,10 +535,16 @@ var svgAttrs = setOf(
 	// Filters.
 	"filterUnits", "primitiveUnits", "in", "in2", "result", "mode", "operator", "k1", "k2", "k3", "k4",
 	"stdDeviation", "edgeMode", "values", "type", "tableValues", "slope", "intercept", "amplitude",
-	"exponent", "offset", "order", "kernelMatrix", "divisor", "bias", "targetX", "targetY", "preserveAlpha",
+	"exponent", "order", "kernelMatrix", "divisor", "bias", "targetX", "targetY", "preserveAlpha",
 	"kernelUnitLength", "surfaceScale", "diffuseConstant", "specularConstant", "specularExponent", "scale",
 	"xChannelSelector", "yChannelSelector", "radius", "baseFrequency", "numOctaves", "seed", "stitchTiles",
 	"azimuth", "elevation", "z", "pointsAtX", "pointsAtY", "pointsAtZ", "limitingConeAngle",
+)
+
+var cssAttrs = setOf(
+	"style",
+	// On <style>.
+	"media",
 	// Presentation attributes.
 	"alignment-baseline", "baseline-shift", "clip", "clip-path", "clip-rule", "color",
 	"color-interpolation", "color-interpolation-filters", "color-rendering", "direction", "display",
