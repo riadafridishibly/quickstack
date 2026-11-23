@@ -16,7 +16,6 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/auth"
 	"github.com/riadafridishibly/quickstack/internal/auth/authtest"
 	"github.com/riadafridishibly/quickstack/internal/db"
-	"github.com/riadafridishibly/quickstack/internal/media"
 )
 
 func staff(t *testing.T, s *apptest.Server, email string, role auth.PlatformRole) *http.Cookie {
@@ -172,24 +171,34 @@ func TestValidation(t *testing.T) {
 	create(t, s, editor, url.Values{"title": {"Taken"}})
 	id := create(t, s, editor, url.Values{"title": {"Mine"}})
 	p := get(t, s, id)
-	if _, err := db.New(s.Pool).CreateAsset(t.Context(), db.CreateAssetParams{Key: "svgk2345", ContentType: "image/svg+xml", Sha256: []byte{0}, Width: 1, Height: 1}); err != nil {
+	q := db.New(s.Pool)
+	svgAsset := func(key string) db.Asset {
+		a, err := q.CreateAsset(t.Context(), db.CreateAssetParams{Key: key, ContentType: "image/svg+xml", Sha256: []byte{0}, Width: 1, Height: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	svgAsset("svgk2345")
+	if _, err := q.MarkAssetReady(t.Context(), db.MarkAssetReadyParams{ID: svgAsset("svgn2345").ID, Width: 1, Height: 1, Widths: []int32{}}); err != nil {
+		t.Fatal(err)
+	}
+	carded := svgAsset("svgc2345")
+	if _, err := q.MarkAssetReady(t.Context(), db.MarkAssetReadyParams{ID: carded.ID, Width: 1, Height: 1, Widths: []int32{}, Card: true}); err != nil {
 		t.Fatal(err)
 	}
 
-	type invalid struct {
+	for _, tc := range []struct {
 		name, msg string
 		form      url.Values
-	}
-	cases := []invalid{
+	}{
 		{"no title", "Enter a title.", url.Values{"title": {" "}, "slug": {"x"}}},
 		{"bad slug", "Use lowercase letters", url.Values{"title": {"A"}, "slug": {"Not A Slug"}}},
 		{"taken slug", "Another post has this slug.", url.Values{"title": {"A"}, "slug": {"taken"}}},
 		{"no cover", "There is no image /media/ab12cd34 in Media.", url.Values{"title": {"A"}, "cover": {"/media/ab12cd34"}}},
-	}
-	if !media.SVGRaster {
-		cases = append(cases, invalid{"svg cover", "A cover can’t be an SVG", url.Values{"title": {"A"}, "cover": {"/media/svgk2345"}}})
-	}
-	for _, tc := range cases {
+		{"svg cover", "This SVG is still being processed.", url.Values{"title": {"A"}, "cover": {"/media/svgk2345"}}},
+		{"svg without card", "This SVG can’t be a cover", url.Values{"title": {"A"}, "cover": {"/media/svgn2345"}}},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := s.Post("/admin/blog", editor, tc.form)
 			apptest.Status(t, w, http.StatusUnprocessableEntity)
@@ -212,6 +221,19 @@ func TestValidation(t *testing.T) {
 	apptest.Status(t, edit(s, editor, db.Post{ID: id + 100, Title: "Gone"}, nil, ""), http.StatusNotFound)
 	if got := get(t, s, id); got.Title != "Mine" {
 		t.Errorf("saved %+v", got)
+	}
+
+	create(t, s, editor, url.Values{"title": {"Carded"}, "cover": {"/media/" + carded.Key}, "action": {"publish"}})
+	if b := s.Get("/blog/carded", nil).Body.String(); !strings.Contains(b, `property="og:image" content="`) || !strings.Contains(b, "/media/"+carded.Key+"/og.jpg") {
+		t.Error("a post whose SVG cover has a card doesn't link it as og:image")
+	}
+	raster, err := q.CreateAsset(t.Context(), db.CreateAssetParams{Key: "pngp2345", ContentType: "image/png", Sha256: []byte{0}, Width: 1, Height: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	create(t, s, editor, url.Values{"title": {"Processing"}, "cover": {"/media/" + raster.Key}, "action": {"publish"}})
+	if b := s.Get("/blog/processing", nil).Body.String(); strings.Contains(b, "og:image") {
+		t.Error("a post links og:image while its cover is still processing")
 	}
 }
 

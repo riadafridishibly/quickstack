@@ -4,8 +4,8 @@ package media
 
 import (
 	"encoding/base64"
-	"errors"
 	"image"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,27 +17,51 @@ const redRect = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12">
 
 func TestRasterizeSVG(t *testing.T) {
 	t.Parallel()
-	files, err := rasterizeSVG([]byte(redRect), 24, 12)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(files) != 1 || files[0].name != CardFile || files[0].width != 0 {
-		t.Fatalf("files %+v, want only %s", files, CardFile)
-	}
-	img, err := vips.NewImageFromBuffer(files[0].data, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer img.Close()
-	if got := image.Pt(img.Width(), img.Height()); got != image.Pt(CardWidth, CardHeight) {
-		t.Errorf("%s is %v", CardFile, got)
-	}
-	px, err := img.Getpoint(img.Width()/2, img.Height()/2, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if px[0] < 190 || px[1] > 20 || px[2] > 20 {
-		t.Errorf("middle pixel %v, want red", px)
+	for _, tt := range []struct {
+		name string
+		svg  string
+	}{
+		{"red", redRect},
+		// Red edges that cover the card, scaled evenly and centred, leaves
+		// out; scaled to fit, they would show at its sides.
+		{"centred", `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="10"><rect width="30" height="10" fill="#c00"/><rect x="5" width="20" height="10" fill="#0c0"/></svg>`},
+		{"wide", `<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="10"><rect width="2000" height="10" fill="#c00"/></svg>`},
+		{"tall", `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="12000"><rect width="300" height="12000" fill="#c00"/></svg>`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			files, err := rasterizeSVG([]byte(tt.svg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(files) != 1 || files[0].name != CardFile || files[0].width != 0 {
+				t.Fatalf("files %+v, want only %s", files, CardFile)
+			}
+			img, err := vips.NewImageFromBuffer(files[0].data, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer img.Close()
+			if got := image.Pt(img.Width(), img.Height()); got != image.Pt(CardWidth, CardHeight) {
+				t.Fatalf("%s is %v", CardFile, got)
+			}
+			want := []float64{204, 0, 0}
+			if tt.name == "centred" {
+				want = []float64{0, 204, 0}
+			}
+			for _, x := range []int{5, CardWidth / 2, CardWidth - 6} {
+				px, err := img.Getpoint(x, CardHeight/2, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := range want {
+					if math.Abs(px[i]-want[i]) > 20 {
+						t.Errorf("pixel at x %d is %v, want %v", x, px, want)
+						break
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -88,26 +112,5 @@ func TestSVGReadsNoFiles(t *testing.T) {
 	png := "data:image/png;base64," + base64.StdEncoding.EncodeToString(encodePNG(t, testImage(24, 12)))
 	if n := painted(t, withImage(png), image.Pt(24, 12)); n != 24*12 {
 		t.Errorf("data: PNG: %d pixels painted", n)
-	}
-}
-
-func TestCheckSVGPixels(t *testing.T) {
-	t.Parallel()
-	for _, tt := range []struct {
-		w, h int
-		want error
-	}{
-		{24, 24, nil},
-		{10, 300, nil},
-		{10, 1000, errSVGThin},
-		{10_000, 10, errSVGThin},
-	} {
-		if err := checkSVGPixels(tt.w, tt.h); !errors.Is(err, tt.want) {
-			t.Errorf("%d×%d: %v, want %v", tt.w, tt.h, err, tt.want)
-		}
-	}
-	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="1000"/>`
-	if _, err := CheckData([]byte(svg)); !errors.Is(err, errSVGThin) {
-		t.Errorf("CheckData: %v", err)
 	}
 }

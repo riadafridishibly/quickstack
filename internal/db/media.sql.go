@@ -14,7 +14,7 @@ const createAsset = `-- name: CreateAsset :one
 INSERT INTO assets (key, content_type, bytes, sha256, width, height, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (key) DO NOTHING
-RETURNING id, key, status, error, content_type, bytes, sha256, width, height, widths, alt, credit, created_by, created_at
+RETURNING id, key, status, error, content_type, bytes, sha256, width, height, widths, card, alt, credit, created_by, created_at
 `
 
 type CreateAssetParams struct {
@@ -50,6 +50,7 @@ func (q *Queries) CreateAsset(ctx context.Context, arg CreateAssetParams) (Asset
 		&i.Width,
 		&i.Height,
 		&i.Widths,
+		&i.Card,
 		&i.Alt,
 		&i.Credit,
 		&i.CreatedBy,
@@ -70,7 +71,7 @@ func (q *Queries) DeleteAsset(ctx context.Context, key string) (int64, error) {
 }
 
 const getAsset = `-- name: GetAsset :one
-SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, alt, credit, created_by, created_at FROM assets WHERE id = $1
+SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, card, alt, credit, created_by, created_at FROM assets WHERE id = $1
 `
 
 func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
@@ -87,6 +88,7 @@ func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
 		&i.Width,
 		&i.Height,
 		&i.Widths,
+		&i.Card,
 		&i.Alt,
 		&i.Credit,
 		&i.CreatedBy,
@@ -96,7 +98,7 @@ func (q *Queries) GetAsset(ctx context.Context, id int64) (Asset, error) {
 }
 
 const getAssetByKey = `-- name: GetAssetByKey :one
-SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, alt, credit, created_by, created_at FROM assets WHERE key = $1
+SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, card, alt, credit, created_by, created_at FROM assets WHERE key = $1
 `
 
 func (q *Queries) GetAssetByKey(ctx context.Context, key string) (Asset, error) {
@@ -113,6 +115,7 @@ func (q *Queries) GetAssetByKey(ctx context.Context, key string) (Asset, error) 
 		&i.Width,
 		&i.Height,
 		&i.Widths,
+		&i.Card,
 		&i.Alt,
 		&i.Credit,
 		&i.CreatedBy,
@@ -122,7 +125,7 @@ func (q *Queries) GetAssetByKey(ctx context.Context, key string) (Asset, error) 
 }
 
 const listAssets = `-- name: ListAssets :many
-SELECT a.id, a.key, a.status, a.error, a.content_type, a.bytes, a.sha256, a.width, a.height, a.widths, a.alt, a.credit, a.created_by, a.created_at, coalesce(c.name, '') AS created_by_name, count(*) OVER () AS total
+SELECT a.id, a.key, a.status, a.error, a.content_type, a.bytes, a.sha256, a.width, a.height, a.widths, a.card, a.alt, a.credit, a.created_by, a.created_at, coalesce(c.name, '') AS created_by_name, count(*) OVER () AS total
 FROM assets a
 LEFT JOIN accounts c ON c.id = a.created_by
 ORDER BY a.created_at DESC, a.id DESC
@@ -145,6 +148,7 @@ type ListAssetsRow struct {
 	Width         int32
 	Height        int32
 	Widths        []int32
+	Card          bool
 	Alt           string
 	Credit        string
 	CreatedBy     *int64
@@ -173,6 +177,7 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]ListA
 			&i.Width,
 			&i.Height,
 			&i.Widths,
+			&i.Card,
 			&i.Alt,
 			&i.Credit,
 			&i.CreatedBy,
@@ -191,7 +196,7 @@ func (q *Queries) ListAssets(ctx context.Context, arg ListAssetsParams) ([]ListA
 }
 
 const listAssetsByKeys = `-- name: ListAssetsByKeys :many
-SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, alt, credit, created_by, created_at FROM assets WHERE key = ANY($1::text[])
+SELECT id, key, status, error, content_type, bytes, sha256, width, height, widths, card, alt, credit, created_by, created_at FROM assets WHERE key = ANY($1::text[])
 `
 
 func (q *Queries) ListAssetsByKeys(ctx context.Context, keys []string) ([]Asset, error) {
@@ -214,6 +219,7 @@ func (q *Queries) ListAssetsByKeys(ctx context.Context, keys []string) ([]Asset,
 			&i.Width,
 			&i.Height,
 			&i.Widths,
+			&i.Card,
 			&i.Alt,
 			&i.Credit,
 			&i.CreatedBy,
@@ -247,14 +253,15 @@ func (q *Queries) MarkAssetFailed(ctx context.Context, arg MarkAssetFailedParams
 }
 
 const markAssetReady = `-- name: MarkAssetReady :execrows
-UPDATE assets SET status = 'ready', error = '', width = $1, height = $2, widths = $3
-WHERE id = $4
+UPDATE assets SET status = 'ready', error = '', width = $1, height = $2, widths = $3, card = $4
+WHERE id = $5
 `
 
 type MarkAssetReadyParams struct {
 	Width  int32
 	Height int32
 	Widths []int32
+	Card   bool
 	ID     int64
 }
 
@@ -263,6 +270,7 @@ func (q *Queries) MarkAssetReady(ctx context.Context, arg MarkAssetReadyParams) 
 		arg.Width,
 		arg.Height,
 		arg.Widths,
+		arg.Card,
 		arg.ID,
 	)
 	if err != nil {

@@ -72,17 +72,20 @@ func Process(ctx context.Context, pool *pgxpool.Pool, store blob.Store, id int64
 		return err
 	}
 
-	render := renderRaster
+	var files []file
+	var width, height int
 	if IsSVG(a) {
-		render = renderSVG
+		files, width, height, err = renderSVG(ctx, a.Key, data)
+	} else {
+		files, width, height, err = renderRaster(data)
 	}
-	files, width, height, err := render(data)
 	if err != nil {
 		slog.WarnContext(ctx, "media: unreadable image", "key", a.Key, "err", err)
 		_, err := q.MarkAssetFailed(ctx, db.MarkAssetFailedParams{ID: id, Error: errUnreadable})
 		return err
 	}
 	widths := make([]int32, 0, len(files))
+	card := false
 	for _, v := range files {
 		if err := store.Put(ctx, a.Key+"/"+v.name, bytes.NewReader(v.data), int64(len(v.data)), v.contentType); err != nil {
 			return err
@@ -90,8 +93,9 @@ func Process(ctx context.Context, pool *pgxpool.Pool, store blob.Store, id int64
 		if v.width > 0 {
 			widths = append(widths, int32(v.width))
 		}
+		card = card || v.name == CardFile
 	}
-	n, err := q.MarkAssetReady(ctx, db.MarkAssetReadyParams{ID: id, Width: int32(width), Height: int32(height), Widths: widths})
+	n, err := q.MarkAssetReady(ctx, db.MarkAssetReadyParams{ID: id, Width: int32(width), Height: int32(height), Widths: widths, Card: card})
 	if err != nil {
 		return err
 	}
@@ -125,15 +129,17 @@ func variantWidths(w int) []int {
 }
 
 // renderSVG writes the sanitized SVG and, when SVGRaster, the social card
-// drawn from it. width and height are the size it declares.
-func renderSVG(data []byte) (files []file, width, height int, err error) {
+// drawn from it. width and height are the size it declares. A card that
+// can't be drawn is left out, since pages show the SVG itself.
+func renderSVG(ctx context.Context, key string, data []byte) (files []file, width, height int, err error) {
 	out, width, height, err := sanitizeSVG(data)
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	files, err = rasterizeSVG(out, width, height)
+	files, err = rasterizeSVG(out)
 	if err != nil {
-		return nil, 0, 0, err
+		slog.WarnContext(ctx, "media: no social card for SVG", "key", key, "err", err)
+		files = nil
 	}
 	return append(files, file{name: SVGFile, contentType: svgContentType, data: out}), width, height, nil
 }

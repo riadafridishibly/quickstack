@@ -127,7 +127,7 @@ func TestUploadAndProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	a = onlyAsset(t, s)
-	if a.Status != media.Ready || !slices.Equal(a.Widths, []int32{320, 640, 800}) {
+	if a.Status != media.Ready || !slices.Equal(a.Widths, []int32{320, 640, 800}) || !a.Card {
 		t.Fatalf("after processing: %+v", a)
 	}
 
@@ -179,7 +179,7 @@ func TestSVG(t *testing.T) {
 		t.Fatal(err)
 	}
 	a = onlyAsset(t, s)
-	if a.Status != media.Ready || len(a.Widths) != 0 {
+	if a.Status != media.Ready || len(a.Widths) != 0 || a.Card != media.SVGRaster {
 		t.Fatalf("after processing: %+v", a)
 	}
 

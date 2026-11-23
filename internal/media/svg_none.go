@@ -6,4 +6,4 @@ package media
 // with resvg. It is true in builds with the resvg tag.
 const SVGRaster = false
 
-func rasterizeSVG([]byte, int, int) ([]file, error) { return nil, nil }
+func rasterizeSVG([]byte) ([]file, error) { return nil, nil }

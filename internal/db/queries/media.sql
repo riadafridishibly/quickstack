@@ -19,7 +19,7 @@ ORDER BY a.created_at DESC, a.id DESC
 LIMIT @lim OFFSET @off;
 
 -- name: MarkAssetReady :execrows
-UPDATE assets SET status = 'ready', error = '', width = @width, height = @height, widths = @widths
+UPDATE assets SET status = 'ready', error = '', width = @width, height = @height, widths = @widths, card = @card
 WHERE id = @id;
 
 -- name: MarkAssetFailed :execrows

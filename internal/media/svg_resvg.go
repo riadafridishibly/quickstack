@@ -39,12 +39,9 @@ var resvgOptions = sync.OnceValue(func() *C.resvg_options {
 	return opt
 })
 
-// rasterizeSVG draws a sanitized SVG, w×h as declared, as the social card.
-// Pages show the SVG itself.
-func rasterizeSVG(svg []byte, w, h int) ([]file, error) {
-	if err := checkSVGPixels(w, h); err != nil {
-		return nil, err
-	}
+// rasterizeSVG draws a sanitized SVG as the social card, cropped around its
+// centre. Pages show the SVG itself.
+func rasterizeSVG(svg []byte) ([]file, error) {
 	t, err := parseSVGTree(svg)
 	if err != nil {
 		return nil, err
@@ -52,12 +49,7 @@ func rasterizeSVG(svg []byte, w, h int) ([]file, error) {
 	defer t.close()
 	startVips()
 
-	f, err := t.drawImage(svgCardSize(w, h), func(img *vips.Image) (file, error) {
-		if err := img.Smartcrop(CardWidth, CardHeight, &vips.SmartcropOptions{Interesting: vips.InterestingAttention}); err != nil {
-			return file{}, fmt.Errorf("%s: %w", CardFile, err)
-		}
-		return cardFile(img)
-	})
+	f, err := t.drawImage(image.Pt(CardWidth, CardHeight), cardFile)
 	if err != nil {
 		return nil, err
 	}
@@ -82,13 +74,17 @@ func parseSVGTree(svg []byte) (*svgTree, error) {
 
 func (t *svgTree) close() { C.resvg_tree_destroy(t.tree) }
 
-// draw renders the whole image scaled to p, as RGBA that isn't
-// premultiplied.
+// draw renders the image p in size, scaled evenly to cover it and centred,
+// as RGBA that isn't premultiplied. Only p's pixels are drawn, however
+// thin the image.
 func (t *svgTree) draw(p image.Point) []byte {
 	px := make([]byte, p.X*p.Y*4)
+	w, h := float64(t.size.width), float64(t.size.height)
+	s := max(float64(p.X)/w, float64(p.Y)/h)
 	tr := C.resvg_transform_identity()
-	tr.a = C.float(float64(p.X) / float64(t.size.width))
-	tr.d = C.float(float64(p.Y) / float64(t.size.height))
+	tr.a, tr.d = C.float(s), C.float(s)
+	tr.e = C.float((float64(p.X) - w*s) / 2)
+	tr.f = C.float((float64(p.Y) - h*s) / 2)
 	C.resvg_render(t.tree, tr, C.uint32_t(p.X), C.uint32_t(p.Y), (*C.char)(unsafe.Pointer(&px[0])))
 	for i := 0; i < len(px); i += 4 {
 		if a := uint32(px[i+3]); a != 0 && a != 255 {

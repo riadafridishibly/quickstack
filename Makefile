@@ -23,9 +23,15 @@ endif
 # social card from each SVG upload, with resvg from a quickstack-resvg kit
 # (scripts/resvg-kit).
 TAGS ?=
+comma := ,
+empty :=
+space := $(empty) $(empty)
+# TAGS may be separated by commas or spaces; go and the Dockerfile get
+# commas.
+GOTAGS := $(subst $(space),$(comma),$(strip $(subst $(comma), ,$(TAGS))))
 HOST := $(shell go env GOOS)-$(shell go env GOARCH)
 RESVG_PC := $(CURDIR)/dist/resvg/$(HOST)/lib/pkgconfig
-ifneq (,$(findstring resvg,$(TAGS)))
+ifneq (,$(filter resvg,$(subst $(comma), ,$(TAGS))))
 export PKG_CONFIG_PATH := $(RESVG_PC)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 RESVG_KIT := resvg-kit
 endif
@@ -84,7 +90,7 @@ dev-vite:
 
 dev-go: export QUICKSTACK_DEV = 1
 dev-go:
-	go tool templ generate -watch -proxy=http://localhost:8360 -proxyport=7360 -open-browser=false -cmd="go run -tags=$(TAGS) ./cmd/quickstack"
+	go tool templ generate -watch -proxy=http://localhost:8360 -proxyport=7360 -open-browser=false -cmd="go run -tags=$(GOTAGS) ./cmd/quickstack"
 
 # QUICKSTACK_DEV puts the sample images where `make dev` serves them from.
 seed: export QUICKSTACK_DEV = 1
@@ -103,7 +109,7 @@ fmt: ## Format Go, templ, and TypeScript
 
 build: gen $(RESVG_KIT) ## Build the frontend and bin/quickstack
 	pnpm run build
-	go build -tags=$(TAGS) -o bin/quickstack ./cmd/quickstack
+	go build -tags=$(GOTAGS) -o bin/quickstack ./cmd/quickstack
 
 # dist cross-compiles with zig against a libvips kit from quickstack-vips
 # (scripts/vips-kit), so the release carries its own libvips. resvg is a
@@ -126,7 +132,7 @@ dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or f
 		CC="zig cc -target $(zig_target.$(TARGET))" \
 		PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR=$(CURDIR)/dist/vips/$(TARGET)/lib/pkgconfig:$(CURDIR)/dist/resvg/$(TARGET)/lib/pkgconfig \
 		CGO_LDFLAGS='-Wl,-rpath,$$ORIGIN/../lib' \
-		go build -a -trimpath -tags=$(TAGS) -ldflags='-s -w' -o $(DIST)/bin/quickstack ./cmd/quickstack
+		go build -a -trimpath -tags=$(GOTAGS) -ldflags='-s -w' -o $(DIST)/bin/quickstack ./cmd/quickstack
 	cp -a dist/vips/$(TARGET)/lib/*.so.* $(DIST)/lib/
 	cp -R dist/vips/$(TARGET)/share/licenses $(DIST)/share/
 	$(if $(RESVG_KIT),cp -R dist/resvg/$(TARGET)/share/licenses $(DIST)/share/licenses/quickstack-resvg)
@@ -136,7 +142,7 @@ dist: gen ## Release tarball for TARGET: linux-amd64 (default), linux-arm64 or f
 	@echo $(DIST).tar.gz
 
 docker: ## Build the quickstack Docker image [TAGS=resvg]
-	docker build --build-arg TAGS=$(TAGS) -t quickstack .
+	docker build --build-arg TAGS=$(GOTAGS) -t quickstack .
 
 test: ## Go tests (needs PostgreSQL, see QUICKSTACK_TEST_DATABASE_URL)
 	go test ./...

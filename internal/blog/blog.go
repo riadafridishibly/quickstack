@@ -117,8 +117,14 @@ func save(ctx context.Context, tx pgx.Tx, actorID int64, old *db.Post, f *postFo
 		if err != nil {
 			return db.Post{}, err
 		}
-		if media.IsSVG(a) && !media.SVGRaster {
-			f.Errors["cover"] = "A cover can’t be an SVG: it is also the picture shown when the post is shared, and social sites don’t show SVG. Use a JPEG, PNG, WebP, GIF or HEIC image."
+		// A raster always gets a card; an SVG only from a resvg build, and
+		// only once processed.
+		if media.IsSVG(a) && !a.Card {
+			if a.Status == media.Processing {
+				f.Errors["cover"] = "This SVG is still being processed. Save again in a moment."
+			} else {
+				f.Errors["cover"] = "This SVG can’t be a cover: a cover is also the picture shown when the post is shared, social sites don’t show SVG, and no JPEG was drawn from this one. Use a JPEG, PNG, WebP, GIF or HEIC image."
+			}
 			return db.Post{}, errInvalid
 		}
 		coverID = &a.ID
