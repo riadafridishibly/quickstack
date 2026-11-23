@@ -2,7 +2,8 @@
 -- Uploaded images. A platform table: the blog's images belong to the site,
 -- not to a workspace. URLs and Markdown name an asset by its key, which is
 -- 8 characters of lowercase Crockford base32. Files live in the blob store
--- under {key}/: the original, a WebP per width in widths, and og.jpg.
+-- under {key}/: the original, a WebP per width in widths, and og.jpg when
+-- card is set.
 CREATE TABLE assets (
     id           bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     key          text        NOT NULL UNIQUE CHECK (key ~ '^[0-9a-hjkmnp-tv-z]{8}$'),
@@ -14,6 +15,7 @@ CREATE TABLE assets (
     width        integer     NOT NULL,
     height       integer     NOT NULL,
     widths       integer[]   NOT NULL DEFAULT '{}',
+    card         boolean     NOT NULL DEFAULT false,
     alt          text        NOT NULL DEFAULT '',
     credit       text        NOT NULL DEFAULT '',
     created_by   bigint      REFERENCES accounts (id) ON DELETE SET NULL,

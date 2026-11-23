@@ -30,6 +30,7 @@ type Asset struct {
 	Width       int32
 	Height      int32
 	Widths      []int32
+	Card        bool
 	Alt         string
 	Credit      string
 	CreatedBy   *int64

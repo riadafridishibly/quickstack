@@ -66,7 +66,9 @@ QUICKSTACK_BLOB_URL=s3://key:secret@bucket/prefix?endpoint=s3.example.com&region
 
 Without `key:secret`, the `AWS_*` variables, `~/.aws/credentials` or the instance role apply. Files are served through the app, so the bucket can stay private.
 
-Moving to a newer kit means changing the version and checksums in `scripts/vips-kit`.
+SVG uploads are sanitized and served as vectors. To also draw a social card from them, so an SVG can be a post's cover, build with `TAGS=resvg`: `make dist TARGET=linux-amd64 TAGS=resvg`, `make docker TAGS=resvg`, or `make dev TAGS=resvg`. That links [resvg](https://github.com/linebender/resvg) statically from a kit made by [quickstack-resvg](https://github.com/riadafridishibly/quickstack-resvg); the release gains no files but licences. On a Mac the kit is built from source, which needs [Rust](https://rustup.rs).
+
+Moving to a newer kit means changing the version and checksums in `scripts/vips-kit` or `scripts/resvg-kit`.
 
 ## Start a new project
 

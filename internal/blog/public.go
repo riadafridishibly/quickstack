@@ -166,7 +166,7 @@ func (h publicHandler) post(w http.ResponseWriter, r *http.Request) error {
 	}
 	m := h.meta(postURL(a.Post.Slug), a.Post.Summary)
 	m.Article = true
-	if a.Cover != nil {
+	if a.Cover != nil && a.Cover.Card {
 		m.Image = h.publicURL + media.FileURL(a.Cover.Key, media.CardFile)
 	}
 	cache(w)
