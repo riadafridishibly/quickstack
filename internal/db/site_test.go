@@ -1,7 +1,10 @@
 package db_test
 
 import (
+	"errors"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/testdb"
@@ -29,13 +32,17 @@ func TestSiteIcon(t *testing.T) {
 		}
 		return s
 	}
-	mark := func(iconID int64, rev int32) int64 {
+	// mark returns the rev the icon replaced, or -1 if it changed nothing.
+	mark := func(iconID int64, rev int32) int32 {
 		t.Helper()
-		n, err := q.MarkSiteIconLive(ctx, db.MarkSiteIconLiveParams{IconID: iconID, Rev: rev})
+		prev, err := q.MarkSiteIconLive(ctx, db.MarkSiteIconLiveParams{IconID: iconID, Rev: rev})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return -1
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		return n
+		return prev
 	}
 	live := func() (*int64, int32) {
 		t.Helper()
@@ -56,20 +63,20 @@ func TestSiteIcon(t *testing.T) {
 
 	a, b := asset("aaaaaaaa"), asset("bbbbbbbb")
 	revA := set(&a).IconRev
-	if n := mark(a, revA); n != 1 {
-		t.Fatalf("marking A live changed %d rows", n)
+	if prev := mark(a, revA); prev != 0 {
+		t.Fatalf("marking A live replaced rev %d, want 0", prev)
 	}
 	revB := set(&b).IconRev
 	if id, rev := live(); id == nil || *id != a || rev != revA {
 		t.Fatalf("while B is drawn, live = %v %d, want A at %d", id, rev, revA)
 	}
-	if n := mark(a, revA+1); n != 0 {
+	if mark(a, revA+1) != -1 {
 		t.Fatal("a job for an icon no longer chosen made it live")
 	}
-	if n := mark(b, revB); n != 1 {
-		t.Fatalf("marking B live changed %d rows", n)
+	if prev := mark(b, revB); prev != revA {
+		t.Fatalf("marking B live replaced rev %d, want %d", prev, revA)
 	}
-	if n := mark(b, revB-1); n != 0 {
+	if mark(b, revB-1) != -1 {
 		t.Fatal("a late job for an earlier rev replaced the live one")
 	}
 

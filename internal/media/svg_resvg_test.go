@@ -74,7 +74,7 @@ func painted(t *testing.T, svg string, p image.Point) int {
 	}
 	defer tree.close()
 	n := 0
-	px := tree.draw(p)
+	px := tree.draw(p, true)
 	for i := 3; i < len(px); i += 4 {
 		if px[i] != 0 {
 			n++

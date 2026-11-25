@@ -49,7 +49,7 @@ func rasterizeSVG(svg []byte) ([]file, error) {
 	defer t.close()
 	startVips()
 
-	f, err := t.drawImage(image.Pt(CardWidth, CardHeight), cardFile)
+	f, err := t.drawImage(image.Pt(CardWidth, CardHeight), true, cardFile)
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +74,16 @@ func parseSVGTree(svg []byte) (*svgTree, error) {
 
 func (t *svgTree) close() { C.resvg_tree_destroy(t.tree) }
 
-// draw renders the image p in size, scaled evenly to cover it and centred,
-// as RGBA that isn't premultiplied. Only p's pixels are drawn, however
-// thin the image.
-func (t *svgTree) draw(p image.Point) []byte {
+// draw renders the image p in size, scaled evenly to cover it, or to fit
+// inside it when cover is false, and centred, as RGBA that isn't
+// premultiplied. Only p's pixels are drawn, however thin the image.
+func (t *svgTree) draw(p image.Point, cover bool) []byte {
 	px := make([]byte, p.X*p.Y*4)
 	w, h := float64(t.size.width), float64(t.size.height)
-	s := max(float64(p.X)/w, float64(p.Y)/h)
+	s := min(float64(p.X)/w, float64(p.Y)/h)
+	if cover {
+		s = max(float64(p.X)/w, float64(p.Y)/h)
+	}
 	tr := C.resvg_transform_identity()
 	tr.a, tr.d = C.float(s), C.float(s)
 	tr.e = C.float((float64(p.X) - w*s) / 2)
@@ -96,10 +99,10 @@ func (t *svgTree) draw(p image.Point) []byte {
 	return px
 }
 
-// drawImage draws the image at p and passes it to save as an sRGB libvips
-// image.
-func (t *svgTree) drawImage(p image.Point, save func(*vips.Image) (file, error)) (file, error) {
-	px := t.draw(p)
+// drawImage draws the image at p, as draw does, and passes it to save as an
+// sRGB libvips image.
+func (t *svgTree) drawImage(p image.Point, cover bool, save func(*vips.Image) (file, error)) (file, error) {
+	px := t.draw(p, cover)
 	// libvips reads px without copying it.
 	defer runtime.KeepAlive(px)
 	mem, err := vips.NewImageFromMemory(px, p.X, p.Y, 4)
@@ -113,4 +116,18 @@ func (t *svgTree) drawImage(p image.Point, save func(*vips.Image) (file, error))
 	}
 	defer img.Close()
 	return save(img)
+}
+
+type svgIcon struct{ *svgTree }
+
+func newSVGIcon(svg []byte) (iconSource, error) {
+	t, err := parseSVGTree(svg)
+	if err != nil {
+		return nil, err
+	}
+	return svgIcon{t}, nil
+}
+
+func (s svgIcon) square(size int, save func(*vips.Image) (file, error)) (file, error) {
+	return s.drawImage(image.Pt(size, size), false, save)
 }

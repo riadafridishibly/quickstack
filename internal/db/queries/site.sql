@@ -18,10 +18,13 @@ SET icon_id = sqlc.narg(icon_id)::bigint,
     updated_at = now()
 RETURNING *;
 
--- name: MarkSiteIconLive :execrows
--- The media_icon job calls it once rev's files are written. A job for an
--- icon that is no longer chosen, or that finishes after a later one,
--- changes nothing.
+-- name: MarkSiteIconLive :one
+-- The media_icon job calls it once rev's files are written, and gets the
+-- rev it replaced, 0 for none. A job for an icon that is no longer chosen,
+-- or that finishes after a later one, changes nothing and gets no row.
+WITH prev AS (SELECT live_icon_rev FROM site_settings FOR UPDATE)
 UPDATE site_settings
-SET live_icon_id = @icon_id::bigint, live_icon_rev = @rev
-WHERE icon_id = @icon_id AND live_icon_rev < @rev;
+SET live_icon_id = @icon_id::bigint, live_icon_rev = @rev::integer
+FROM prev
+WHERE site_settings.icon_id = @icon_id AND site_settings.live_icon_rev < @rev
+RETURNING prev.live_icon_rev;

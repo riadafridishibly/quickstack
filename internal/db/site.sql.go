@@ -58,10 +58,13 @@ func (q *Queries) LockSiteSettings(ctx context.Context) (SiteSetting, error) {
 	return i, err
 }
 
-const markSiteIconLive = `-- name: MarkSiteIconLive :execrows
+const markSiteIconLive = `-- name: MarkSiteIconLive :one
+WITH prev AS (SELECT live_icon_rev FROM site_settings FOR UPDATE)
 UPDATE site_settings
-SET live_icon_id = $1::bigint, live_icon_rev = $2
-WHERE icon_id = $1 AND live_icon_rev < $2
+SET live_icon_id = $1::bigint, live_icon_rev = $2::integer
+FROM prev
+WHERE site_settings.icon_id = $1 AND site_settings.live_icon_rev < $2
+RETURNING prev.live_icon_rev
 `
 
 type MarkSiteIconLiveParams struct {
@@ -69,15 +72,14 @@ type MarkSiteIconLiveParams struct {
 	Rev    int32
 }
 
-// The media_icon job calls it once rev's files are written. A job for an
-// icon that is no longer chosen, or that finishes after a later one,
-// changes nothing.
-func (q *Queries) MarkSiteIconLive(ctx context.Context, arg MarkSiteIconLiveParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markSiteIconLive, arg.IconID, arg.Rev)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+// The media_icon job calls it once rev's files are written, and gets the
+// rev it replaced, 0 for none. A job for an icon that is no longer chosen,
+// or that finishes after a later one, changes nothing and gets no row.
+func (q *Queries) MarkSiteIconLive(ctx context.Context, arg MarkSiteIconLiveParams) (int32, error) {
+	row := q.db.QueryRow(ctx, markSiteIconLive, arg.IconID, arg.Rev)
+	var live_icon_rev int32
+	err := row.Scan(&live_icon_rev)
+	return live_icon_rev, err
 }
 
 const updateSiteIcon = `-- name: UpdateSiteIcon :one
