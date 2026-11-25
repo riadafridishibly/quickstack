@@ -3,7 +3,8 @@
 -- media_icon job into site/icon/{rev}/ in the blob store; icon_rev goes up
 -- with each change. Pages link the files of live_icon_rev, drawn from
 -- live_icon_id, so they keep the previous icon until the job has run.
--- Deleting an asset clears both references to it.
+-- Deleting an asset clears both references to it. icon_error says why the
+-- job gave up on icon_rev; each change clears it.
 CREATE TABLE site_settings (
     id              boolean     PRIMARY KEY DEFAULT true CHECK (id),
     icon_id         bigint      REFERENCES assets (id) ON DELETE SET NULL,
@@ -11,6 +12,7 @@ CREATE TABLE site_settings (
     icon_rev        integer     NOT NULL DEFAULT 0,
     live_icon_id    bigint      REFERENCES assets (id) ON DELETE SET NULL,
     live_icon_rev   integer     NOT NULL DEFAULT 0,
+    icon_error      text        NOT NULL DEFAULT '',
     updated_at      timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO site_settings DEFAULT VALUES;

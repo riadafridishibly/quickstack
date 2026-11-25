@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/riadafridishibly/quickstack/internal/apptest"
 	"github.com/riadafridishibly/quickstack/internal/auth"
@@ -41,7 +42,7 @@ func setIcon(t *testing.T, s *apptest.Server, c *http.Cookie, data []byte) int32
 	}
 	apptest.Redirect(t, s.Post("/admin/site/icon", c, url.Values{"icon": {media.URL(key)}, "background": {"#203040"}}), "/admin/site?done=saved")
 	rev := settings(t, s).IconRev
-	if err := media.DrawIcon(t.Context(), s.Pool, s.Blob, rev); err != nil {
+	if err := media.DrawIcon(t.Context(), s.Pool, s.Blob, s.Jobs.Client, rev); err != nil {
 		t.Fatal(err)
 	}
 	return rev
@@ -149,6 +150,18 @@ func TestServeIcon(t *testing.T) {
 	apptest.Redirect(t, s.Post("/admin/site/icon", admin, url.Values{"icon": {""}}), "/admin/site?done=saved")
 	if b := s.Get("/login", nil).Body.String(); strings.Contains(b, "apple-touch-icon") {
 		t.Error("the page links the icon after it was removed")
+	}
+	apptest.Status(t, s.Get("/favicon.ico", nil), http.StatusNotFound)
+
+	// Deleting the icon's image in Media deletes its icon files at once.
+	rev = setIcon(t, s, admin, squarePNG(t, 512))
+	a, err := db.New(s.Pool).GetAsset(t.Context(), *settings(t, s).IconID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apptest.Redirect(t, s.Post("/admin/media/"+a.Key+"/delete", admin, url.Values{}), "/admin/media?done=deleted")
+	if in := deletionIn(t, s, strings.TrimSuffix(media.IconDir(rev), "/")); in > time.Minute {
+		t.Errorf("the deleted image's icon files are deleted in %v, want now", in)
 	}
 	apptest.Status(t, s.Get("/favicon.ico", nil), http.StatusNotFound)
 }

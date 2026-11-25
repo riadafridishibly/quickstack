@@ -150,6 +150,7 @@ type SiteSetting struct {
 	IconRev        int32
 	LiveIconID     *int64
 	LiveIconRev    int32
+	IconError      string
 	UpdatedAt      time.Time
 }
 

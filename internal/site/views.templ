@@ -42,6 +42,8 @@ templ iconStatus(v pageView) {
 				<p class="font-mono">{ media.URL(a.Key) }</p>
 				if v.drawing() {
 					<p class="opacity-70">Drawing the icon’s files. Pages show the previous icon until they’re ready.</p>
+				} else if v.failed() {
+					<p role="alert" class="text-error">{ v.Settings.IconError } Pages show the previous icon, if there was one.</p>
 				} else {
 					<p class="opacity-70">Pages show this icon.</p>
 				}
@@ -73,7 +75,7 @@ templ iconFormEl(v pageView) {
 			An image’s address from <a href="/admin/media" class={ web.LinkClass }>Media</a>. Leave it empty to remove the icon.
 		</p>
 		@web.Field("Background", "background", f.Errors["background"]) {
-			<input type="color" { web.InputAttrs("background", f.Errors["background"])... } value={ f.Background } class="h-10 w-16 cursor-pointer rounded-field border border-base-300 bg-base-100 p-1"/>
+			<input type="color" { web.InputAttrs("background", f.Errors["background"])... } value={ f.Background } class={ web.ColorInputClass }/>
 		}
 		<p class="-mt-3 text-sm opacity-70">
 			Fills the transparent parts of the icon on iPhone and iPad home screens, which would otherwise be black. An installed app also uses it for its title bar.

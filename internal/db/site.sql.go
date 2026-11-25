@@ -10,7 +10,7 @@ import (
 )
 
 const getSiteSettings = `-- name: GetSiteSettings :one
-SELECT s.id, s.icon_id, s.icon_background, s.icon_rev, s.live_icon_id, s.live_icon_rev, s.updated_at, i.key AS icon_key, l.content_type AS live_icon_content_type
+SELECT s.id, s.icon_id, s.icon_background, s.icon_rev, s.live_icon_id, s.live_icon_rev, s.icon_error, s.updated_at, i.key AS icon_key, l.content_type AS live_icon_content_type
 FROM site_settings s
 LEFT JOIN assets i ON i.id = s.icon_id
 LEFT JOIN assets l ON l.id = s.live_icon_id
@@ -32,6 +32,7 @@ func (q *Queries) GetSiteSettings(ctx context.Context) (GetSiteSettingsRow, erro
 		&i.SiteSetting.IconRev,
 		&i.SiteSetting.LiveIconID,
 		&i.SiteSetting.LiveIconRev,
+		&i.SiteSetting.IconError,
 		&i.SiteSetting.UpdatedAt,
 		&i.IconKey,
 		&i.LiveIconContentType,
@@ -39,8 +40,24 @@ func (q *Queries) GetSiteSettings(ctx context.Context) (GetSiteSettingsRow, erro
 	return i, err
 }
 
+const lockLiveIconOf = `-- name: LockLiveIconOf :one
+SELECT s.live_icon_rev
+FROM site_settings s
+JOIN assets a ON a.id = s.live_icon_id
+WHERE a.key = $1
+FOR UPDATE OF s
+`
+
+// The live icon's rev, if the asset with key is the live icon.
+func (q *Queries) LockLiveIconOf(ctx context.Context, key string) (int32, error) {
+	row := q.db.QueryRow(ctx, lockLiveIconOf, key)
+	var live_icon_rev int32
+	err := row.Scan(&live_icon_rev)
+	return live_icon_rev, err
+}
+
 const lockSiteSettings = `-- name: LockSiteSettings :one
-SELECT id, icon_id, icon_background, icon_rev, live_icon_id, live_icon_rev, updated_at FROM site_settings FOR UPDATE
+SELECT id, icon_id, icon_background, icon_rev, live_icon_id, live_icon_rev, icon_error, updated_at FROM site_settings FOR UPDATE
 `
 
 func (q *Queries) LockSiteSettings(ctx context.Context) (SiteSetting, error) {
@@ -53,9 +70,26 @@ func (q *Queries) LockSiteSettings(ctx context.Context) (SiteSetting, error) {
 		&i.IconRev,
 		&i.LiveIconID,
 		&i.LiveIconRev,
+		&i.IconError,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const markSiteIconFailed = `-- name: MarkSiteIconFailed :exec
+UPDATE site_settings SET icon_error = $1 WHERE icon_rev = $2
+`
+
+type MarkSiteIconFailedParams struct {
+	Error string
+	Rev   int32
+}
+
+// The media_icon job calls it when it gives up on rev. A failure of a rev
+// that is no longer the latest isn't shown.
+func (q *Queries) MarkSiteIconFailed(ctx context.Context, arg MarkSiteIconFailedParams) error {
+	_, err := q.db.Exec(ctx, markSiteIconFailed, arg.Error, arg.Rev)
+	return err
 }
 
 const markSiteIconLive = `-- name: MarkSiteIconLive :one
@@ -87,9 +121,10 @@ UPDATE site_settings
 SET icon_id = $1::bigint,
     icon_background = $2,
     icon_rev = icon_rev + 1,
+    icon_error = '',
     live_icon_id = CASE WHEN $1::bigint IS NULL THEN NULL ELSE live_icon_id END,
     updated_at = now()
-RETURNING id, icon_id, icon_background, icon_rev, live_icon_id, live_icon_rev, updated_at
+RETURNING id, icon_id, icon_background, icon_rev, live_icon_id, live_icon_rev, icon_error, updated_at
 `
 
 type UpdateSiteIconParams struct {
@@ -109,6 +144,7 @@ func (q *Queries) UpdateSiteIcon(ctx context.Context, arg UpdateSiteIconParams) 
 		&i.IconRev,
 		&i.LiveIconID,
 		&i.LiveIconRev,
+		&i.IconError,
 		&i.UpdatedAt,
 	)
 	return i, err

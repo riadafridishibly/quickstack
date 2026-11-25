@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/riadafridishibly/quickstack/internal/apptest"
 	"github.com/riadafridishibly/quickstack/internal/auth"
@@ -87,6 +88,20 @@ func audit(t *testing.T, s *apptest.Server) []string {
 	return out
 }
 
+// deletionIn is how long from now the deletion of the files under key is
+// scheduled.
+func deletionIn(t *testing.T, s *apptest.Server, key string) time.Duration {
+	t.Helper()
+	var secs float64
+	err := s.Pool.QueryRow(t.Context(), `
+		SELECT extract(epoch FROM scheduled_at - now())::float8 FROM river_job
+		WHERE kind = 'media_delete_files' AND args->>'key' = $1`, key).Scan(&secs)
+	if err != nil {
+		t.Fatalf("deletion of %s: %v", key, err)
+	}
+	return time.Duration(secs * float64(time.Second))
+}
+
 func TestSiteIsForSuperadmins(t *testing.T) {
 	t.Parallel()
 	s := apptest.New(t)
@@ -165,6 +180,10 @@ func TestSetIcon(t *testing.T) {
 	if got := jobs(t, s); !slices.Equal(got, want) {
 		t.Errorf("jobs %v, want %v", got, want)
 	}
+	// Pages cached before the removal still link the files for a while.
+	if in := deletionIn(t, s, "site/icon/1"); in < media.IconGrace-time.Minute {
+		t.Errorf("the removed icon's files are deleted in %v, want %v", in, media.IconGrace)
+	}
 	want = []string{"site.icon_set /media/pngk2345", "site.icon_background_set #102030", "site.icon_removed"}
 	if got := audit(t, s); !slices.Equal(got, want) {
 		t.Errorf("audit %v, want %v", got, want)
@@ -217,5 +236,39 @@ func TestIconValidation(t *testing.T) {
 
 	if media.SVGRaster {
 		apptest.Redirect(t, s.Post("/admin/site/icon", admin, url.Values{"icon": {"/media/svgv2345"}}), "/admin/site?done=saved")
+	}
+}
+
+func TestIconFailed(t *testing.T) {
+	t.Parallel()
+	s := apptest.New(t)
+	ctx := t.Context()
+	admin := staff(t, s, "ada@example.com", auth.Superadmin)
+	a := asset(t, s, "bdpn2345", "image/png", 600, 600, media.Ready)
+	junk := "not a PNG"
+	if err := s.Blob.Put(ctx, a.Key+"/original.png", strings.NewReader(junk), int64(len(junk)), "image/png"); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"icon": {"/media/" + a.Key}, "background": {"#ffffff"}}
+	apptest.Redirect(t, s.Post("/admin/site/icon", admin, form), "/admin/site?done=saved")
+	if err := media.DrawIcon(ctx, s.Pool, s.Blob, s.Jobs.Client, 1); err == nil {
+		t.Fatal("an unreadable icon was drawn")
+	}
+
+	w := s.Do(apptest.Req{Path: "/admin/site", Cookie: admin, Target: "icon-status"})
+	if b := w.Body.String(); strings.Contains(b, "hx-trigger") || !strings.Contains(b, "This image couldn’t be drawn as an icon.") {
+		t.Errorf("status once the job gave up:\n%s", b)
+	}
+
+	// Saving the same values again tries again.
+	apptest.Redirect(t, s.Post("/admin/site/icon", admin, form), "/admin/site?done=saved")
+	if set := settings(t, s); set.IconRev != 2 || set.IconError != "" {
+		t.Errorf("after saving again: %+v", set)
+	}
+	if got := jobs(t, s); !slices.Equal(got, []string{`media_icon {"rev": 1}`, `media_icon {"rev": 2}`}) {
+		t.Errorf("jobs %v", got)
+	}
+	if got := audit(t, s); len(got) != 1 {
+		t.Errorf("audit %v: trying again isn't a change", got)
 	}
 }

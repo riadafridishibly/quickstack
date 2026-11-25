@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	vips "github.com/cshum/vipsgen/vips816"
 	"github.com/jackc/pgx/v5"
@@ -94,11 +95,6 @@ func IconRoutes(mux *web.Mux, store blob.Store) {
 	})
 }
 
-// DeleteIconFiles is the job that deletes the icon files drawn for rev.
-func DeleteIconFiles(rev int32) DeleteFilesArgs {
-	return DeleteFilesArgs{Key: strings.TrimSuffix(IconDir(rev), "/")}
-}
-
 // IconProblem says why a can't be the site's icon, or returns "" if it can.
 func IconProblem(a db.Asset) string {
 	switch {
@@ -133,17 +129,46 @@ type iconWorker struct {
 }
 
 func (w *iconWorker) Work(ctx context.Context, j *river.Job[IconArgs]) error {
-	return DrawIcon(ctx, w.pool, w.store, j.Args.Rev)
+	err := DrawIcon(ctx, w.pool, w.store, river.ClientFromContext[pgx.Tx](ctx), j.Args.Rev)
+	var cancel *river.JobCancelError
+	if err != nil && j.Attempt >= j.MaxAttempts && !errors.As(err, &cancel) {
+		ferr := db.New(w.pool).MarkSiteIconFailed(ctx, db.MarkSiteIconFailedParams{Rev: j.Args.Rev, Error: errIconRetry})
+		return errors.Join(err, ferr)
+	}
+	return err
 }
 
-// errIconSource is an icon that can't be drawn, however often it's tried.
-var errIconSource = errors.New("media: icon source can't be drawn")
+// What the Site section shows when the job gives up.
+const (
+	errIconUnreadable = "This image couldn’t be drawn as an icon. Pick another image."
+	errIconNoSVG      = "This build can’t draw an SVG icon. Pick a PNG or JPEG, or build with the resvg tag."
+	errIconRetry      = "Drawing the icon failed. Save again to try once more."
+)
 
-// DrawIcon draws the site icon's files for rev and makes them the live
-// icon, then deletes the files of the icon they replace. It does nothing
-// if rev is no longer the latest change. An error means it should be
-// tried again.
-func DrawIcon(ctx context.Context, pool *pgxpool.Pool, store blob.Store, rev int32) error {
+// errNoSVGIcon is an SVG icon in a build without the resvg tag.
+var errNoSVGIcon = errors.New("media: drawing an SVG icon needs the resvg tag")
+
+// IconGrace is how long a replaced icon's files stay, for the pages and
+// manifests that were cached before the change and still link them.
+const IconGrace = 2 * time.Hour
+
+// QueueIconDeletion queues, as part of tx, the deletion of the icon files
+// drawn for rev: after IconGrace, or at once when later is false.
+func QueueIconDeletion(ctx context.Context, tx pgx.Tx, jc *river.Client[pgx.Tx], rev int32, later bool) error {
+	var opts *river.InsertOpts
+	if later {
+		opts = &river.InsertOpts{ScheduledAt: time.Now().Add(IconGrace)}
+	}
+	_, err := jc.InsertTx(ctx, tx, DeleteFilesArgs{Key: strings.TrimSuffix(IconDir(rev), "/")}, opts)
+	return err
+}
+
+// DrawIcon draws the site icon's files for rev, makes them the live icon,
+// and queues the deletion of the files of the icon they replace. It does
+// nothing if rev is no longer the latest change. If the image can't be
+// drawn it records why in site_settings and returns a cancelling error;
+// any other error means it should be tried again.
+func DrawIcon(ctx context.Context, pool *pgxpool.Pool, store blob.Store, jc *river.Client[pgx.Tx], rev int32) error {
 	q := db.New(pool)
 	s, err := q.GetSiteSettings(ctx)
 	if err != nil {
@@ -160,8 +185,15 @@ func DrawIcon(ctx context.Context, pool *pgxpool.Pool, store blob.Store, rev int
 	if err != nil {
 		return err
 	}
+	fail := func(msg string, err error) error {
+		slog.WarnContext(ctx, "media: icon not drawn", "key", a.Key, "err", err)
+		if ferr := q.MarkSiteIconFailed(ctx, db.MarkSiteIconFailedParams{Rev: rev, Error: msg}); ferr != nil {
+			return ferr
+		}
+		return river.JobCancel(err)
+	}
 	if a.Status != Ready {
-		return river.JobCancel(fmt.Errorf("%w: asset %s is %s", errIconSource, a.Key, a.Status))
+		return fail(errIconUnreadable, fmt.Errorf("media: icon asset %s is %s", a.Key, a.Status))
 	}
 	name := originalKey(a)
 	if IsSVG(a) {
@@ -178,12 +210,14 @@ func DrawIcon(ctx context.Context, pool *pgxpool.Pool, store blob.Store, rev int
 	}
 	bg, err := parseHexColor(set.IconBackground)
 	if err != nil {
-		return river.JobCancel(err)
+		return fail(errIconUnreadable, err)
 	}
 	files, err := renderIcon(data, IsSVG(a), bg)
+	if errors.Is(err, errNoSVGIcon) {
+		return fail(errIconNoSVG, err)
+	}
 	if err != nil {
-		slog.WarnContext(ctx, "media: icon not drawn", "key", a.Key, "err", err)
-		return river.JobCancel(fmt.Errorf("%w: %w", errIconSource, err))
+		return fail(errIconUnreadable, err)
 	}
 
 	dir := IconDir(rev)
@@ -192,18 +226,18 @@ func DrawIcon(ctx context.Context, pool *pgxpool.Pool, store blob.Store, rev int
 			return err
 		}
 	}
-	prev, err := q.MarkSiteIconLive(ctx, db.MarkSiteIconLiveParams{IconID: a.ID, Rev: rev})
+	err = pgx.BeginTxFunc(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		prev, err := db.New(tx).MarkSiteIconLive(ctx, db.MarkSiteIconLiveParams{IconID: a.ID, Rev: rev})
+		if err != nil || prev == 0 {
+			return err
+		}
+		return QueueIconDeletion(ctx, tx, jc, prev, true)
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Another icon was chosen, or a later rev went live, while this ran.
 		return store.DeletePrefix(ctx, dir)
 	}
-	if err != nil {
-		return err
-	}
-	if prev > 0 {
-		return store.DeletePrefix(ctx, IconDir(prev))
-	}
-	return nil
+	return err
 }
 
 // iconSource draws an icon as a square of a given size, with the image

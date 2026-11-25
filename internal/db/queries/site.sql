@@ -14,6 +14,7 @@ UPDATE site_settings
 SET icon_id = sqlc.narg(icon_id)::bigint,
     icon_background = @icon_background,
     icon_rev = icon_rev + 1,
+    icon_error = '',
     live_icon_id = CASE WHEN sqlc.narg(icon_id)::bigint IS NULL THEN NULL ELSE live_icon_id END,
     updated_at = now()
 RETURNING *;
@@ -28,3 +29,16 @@ SET live_icon_id = @icon_id::bigint, live_icon_rev = @rev::integer
 FROM prev
 WHERE site_settings.icon_id = @icon_id AND site_settings.live_icon_rev < @rev
 RETURNING prev.live_icon_rev;
+
+-- name: MarkSiteIconFailed :exec
+-- The media_icon job calls it when it gives up on rev. A failure of a rev
+-- that is no longer the latest isn't shown.
+UPDATE site_settings SET icon_error = @error WHERE icon_rev = @rev;
+
+-- name: LockLiveIconOf :one
+-- The live icon's rev, if the asset with key is the live icon.
+SELECT s.live_icon_rev
+FROM site_settings s
+JOIN assets a ON a.id = s.live_icon_id
+WHERE a.key = @key
+FOR UPDATE OF s;

@@ -47,12 +47,17 @@ type pageView struct {
 	Message string
 }
 
-// drawing reports whether the chosen icon's files are still being drawn,
-// so pages show the previous icon.
-func (v pageView) drawing() bool {
-	s := v.Settings
+// pending reports whether the chosen icon isn't live yet, so pages show
+// the previous icon.
+func pending(s db.SiteSetting) bool {
 	return s.IconID != nil && (s.LiveIconID == nil || *s.LiveIconID != *s.IconID || s.LiveIconRev < s.IconRev)
 }
+
+// drawing reports whether the job is still drawing the chosen icon.
+func (v pageView) drawing() bool { return pending(v.Settings) && v.Settings.IconError == "" }
+
+// failed reports whether the job gave up on the chosen icon.
+func (v pageView) failed() bool { return pending(v.Settings) && v.Settings.IconError != "" }
 
 func (h adminHandler) load(ctx context.Context) (pageView, error) {
 	row, err := h.q.GetSiteSettings(ctx)
@@ -144,7 +149,9 @@ func saveIcon(ctx context.Context, tx pgx.Tx, jc *jobs.Client, actorID int64, f 
 	}
 	iconChanged := (old.IconID == nil) != (iconID == nil) || (iconID != nil && *old.IconID != *iconID)
 	backgroundChanged := old.IconBackground != f.background
-	if !iconChanged && !backgroundChanged {
+	// Saving the same icon again after the job gave up on it tries again.
+	retry := pending(old) && old.IconError != ""
+	if !iconChanged && !backgroundChanged && !retry {
 		return nil
 	}
 
@@ -155,8 +162,8 @@ func saveIcon(ctx context.Context, tx pgx.Tx, jc *jobs.Client, actorID int64, f 
 	switch {
 	case set.IconID != nil:
 		_, err = jc.InsertTx(ctx, tx, media.IconArgs{Rev: set.IconRev}, nil)
-	case old.LiveIconRev > 0:
-		_, err = jc.InsertTx(ctx, tx, media.DeleteIconFiles(old.LiveIconRev), nil)
+	case old.LiveIconID != nil:
+		err = media.QueueIconDeletion(ctx, tx, jc.Client, old.LiveIconRev, true)
 	}
 	if err != nil {
 		return err
