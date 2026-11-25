@@ -22,6 +22,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/jobs"
 	"github.com/riadafridishibly/quickstack/internal/mail"
+	"github.com/riadafridishibly/quickstack/internal/site"
 )
 
 const usage = `usage:
@@ -95,9 +96,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	settings := site.NewCache(pool)
+	go settings.Listen(ctx)
 	h, err := app.New(app.Config{
 		ViteURL: cfg.ViteURL, TrustedProxies: cfg.TrustedProxies, PublicURL: cfg.PublicURL, Jobs: jc, Outbox: outbox, Blob: store,
-		SecretKey: cfg.SecretKey,
+		SecretKey: cfg.SecretKey, Site: settings,
 	}, pool)
 	if err != nil {
 		return err

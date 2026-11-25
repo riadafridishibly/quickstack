@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -55,25 +56,32 @@ func Routes(mux *web.Mux, store blob.Store) {
 		case !variantRE.MatchString(name):
 			return web.ErrNotFound
 		}
-		f, err := store.Open(r.Context(), key+"/"+name)
-		if errors.Is(err, blob.ErrNotFound) {
-			return web.ErrNotFound
-		}
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		h := w.Header()
-		h.Set("Content-Type", contentType)
-		if name == SVGFile {
-			h.Set("Content-Security-Policy", svgCSP)
-			h.Set("X-Content-Type-Options", "nosniff")
-		}
 		// A key's files never change: a new upload gets a new key.
-		h.Set("Cache-Control", "public, max-age=31536000, immutable")
-		http.ServeContent(w, r, name, time.Time{}, f)
-		return nil
+		return serveFile(w, r, store, key+"/"+name, contentType, immutable)
 	})
+}
+
+const immutable = "public, max-age=31536000, immutable"
+
+// serveFile serves the file at key in store, or returns web.ErrNotFound.
+func serveFile(w http.ResponseWriter, r *http.Request, store blob.Store, key, contentType, cacheControl string) error {
+	f, err := store.Open(r.Context(), key)
+	if errors.Is(err, blob.ErrNotFound) {
+		return web.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := w.Header()
+	h.Set("Content-Type", contentType)
+	if contentType == svgContentType {
+		h.Set("Content-Security-Policy", svgCSP)
+		h.Set("X-Content-Type-Options", "nosniff")
+	}
+	h.Set("Cache-Control", cacheControl)
+	http.ServeContent(w, r, path.Base(key), time.Time{}, f)
+	return nil
 }
 
 type handler struct {

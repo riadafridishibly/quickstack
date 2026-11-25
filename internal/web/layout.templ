@@ -20,6 +20,30 @@ type Meta struct {
 	NoIndex bool
 }
 
+// Icons are the site icon's links in a page's head. The zero value has
+// none.
+type Icons struct {
+	Favicon    string
+	SVG        string
+	AppleTouch string
+	Manifest   string
+}
+
+type iconsKey struct{}
+
+// WithIcons gives Document the site icon's links: it calls icons when it
+// renders a page.
+func WithIcons(ctx context.Context, icons func(context.Context) Icons) context.Context {
+	return context.WithValue(ctx, iconsKey{}, icons)
+}
+
+func iconsFrom(ctx context.Context) Icons {
+	if f, ok := ctx.Value(iconsKey{}).(func(context.Context) Icons); ok {
+		return f(ctx)
+	}
+	return Icons{}
+}
+
 // Document is the HTML shell every layout renders into. style is AppStyle
 // or PublicStyle.
 templ Document(title, style string, m Meta) {
@@ -29,7 +53,7 @@ templ Document(title, style string, m Meta) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · Quickstack</title>
-			<link rel="icon" href="data:,"/>
+			@iconLinks(iconsFrom(ctx))
 			@metaTags(title, m)
 			@AssetTags(style)
 		</head>
@@ -37,6 +61,20 @@ templ Document(title, style string, m Meta) {
 			{ children... }
 		</body>
 	</html>
+}
+
+templ iconLinks(i Icons) {
+	if i.Favicon == "" {
+		// Stops the browser asking for /favicon.ico.
+		<link rel="icon" href="data:,"/>
+	} else {
+		<link rel="icon" href={ i.Favicon } sizes="32x32"/>
+		if i.SVG != "" {
+			<link rel="icon" href={ i.SVG } type="image/svg+xml"/>
+		}
+		<link rel="apple-touch-icon" href={ i.AppleTouch }/>
+		<link rel="manifest" href={ i.Manifest }/>
+	}
 }
 
 templ metaTags(title string, m Meta) {

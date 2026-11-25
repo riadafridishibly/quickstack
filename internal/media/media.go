@@ -179,13 +179,24 @@ func Discard(ctx context.Context, store blob.Store, a db.Asset) {
 }
 
 // Delete removes the asset with key, as part of tx, and queues a job that
-// deletes its files once tx commits. It returns pgx.ErrNoRows if there is
-// no such asset.
+// deletes its files once tx commits. If it is the site icon, the icon's
+// files go too, since they show the same image. It returns pgx.ErrNoRows
+// if there is no such asset.
 func Delete(ctx context.Context, tx pgx.Tx, jc *jobs.Client, key string) error {
-	if _, err := db.New(tx).DeleteAsset(ctx, key); err != nil {
+	q := db.New(tx)
+	liveRev, err := q.LockLiveIconOf(ctx, key)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	_, err := jc.InsertTx(ctx, tx, DeleteFilesArgs{Key: key}, nil)
+	if _, err := q.DeleteAsset(ctx, key); err != nil {
+		return err
+	}
+	if liveRev > 0 {
+		if err := QueueIconDeletion(ctx, tx, jc.Client, liveRev, false); err != nil {
+			return err
+		}
+	}
+	_, err = jc.InsertTx(ctx, tx, DeleteFilesArgs{Key: key}, nil)
 	return err
 }
 
@@ -200,7 +211,8 @@ func (ProcessArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{Queue: jobs.QueueMedia, MaxAttempts: 5}
 }
 
-// DeleteFilesArgs deletes the files of a deleted asset.
+// DeleteFilesArgs deletes the files under Key/: those of a deleted asset,
+// or of a site icon that was replaced.
 type DeleteFilesArgs struct {
 	Key string `json:"key"`
 }

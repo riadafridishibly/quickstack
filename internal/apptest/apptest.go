@@ -16,6 +16,7 @@ import (
 
 	"github.com/riadafridishibly/quickstack/internal/app"
 	"github.com/riadafridishibly/quickstack/internal/blob"
+	"github.com/riadafridishibly/quickstack/internal/jobs"
 	"github.com/riadafridishibly/quickstack/internal/mail"
 	"github.com/riadafridishibly/quickstack/internal/testdb"
 )
@@ -31,6 +32,9 @@ type Server struct {
 	Pool *pgxpool.Pool
 	// Blob is the store uploads go to, in a temporary directory.
 	Blob *blob.File
+	// Jobs inserts jobs without working them; tests run a job's work
+	// directly.
+	Jobs *jobs.Client
 	h    http.Handler
 }
 
@@ -41,13 +45,17 @@ func New(t testing.TB) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The Vite URL makes the layout point at a dev server, so tests don't
-	// need a frontend build.
-	h, err := app.New(app.Config{ViteURL: "http://localhost:8361", PublicURL: PublicURL, Blob: store, SecretKey: SecretKey}, pool)
+	jc, err := jobs.New(pool, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Server{t: t, Pool: pool, Blob: store, h: h}
+	// The Vite URL makes the layout point at a dev server, so tests don't
+	// need a frontend build.
+	h, err := app.New(app.Config{ViteURL: "http://localhost:8361", PublicURL: PublicURL, Blob: store, SecretKey: SecretKey, Jobs: jc}, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Server{t: t, Pool: pool, Blob: store, Jobs: jc, h: h}
 }
 
 // Req is a request to send: Form makes it a POST.

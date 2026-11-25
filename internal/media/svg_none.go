@@ -7,3 +7,7 @@ package media
 const SVGRaster = false
 
 func rasterizeSVG([]byte) ([]file, error) { return nil, nil }
+
+func newSVGIcon([]byte) (iconSource, error) {
+	return nil, errNoSVGIcon
+}

@@ -143,6 +143,17 @@ type Session struct {
 	ExpiresAt       time.Time
 }
 
+type SiteSetting struct {
+	ID             bool
+	IconID         *int64
+	IconBackground string
+	IconRev        int32
+	LiveIconID     *int64
+	LiveIconRev    int32
+	IconError      string
+	UpdatedAt      time.Time
+}
+
 type Task struct {
 	WorkspaceID int64
 	ID          int64

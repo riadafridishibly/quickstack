@@ -22,6 +22,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/platform"
 	"github.com/riadafridishibly/quickstack/internal/projects"
 	"github.com/riadafridishibly/quickstack/internal/public"
+	"github.com/riadafridishibly/quickstack/internal/site"
 	"github.com/riadafridishibly/quickstack/internal/tenant"
 	"github.com/riadafridishibly/quickstack/internal/web"
 	"github.com/riadafridishibly/quickstack/internal/workspaces"
@@ -43,6 +44,9 @@ type Config struct {
 	// SecretKey seals secrets the database holds, such as authenticator
 	// app keys. It is auth.KeySize bytes.
 	SecretKey []byte
+	// Site holds the site's settings, such as its icon. Nil uses one that
+	// reads them for each page; one whose Listen runs keeps them in memory.
+	Site *site.Cache
 }
 
 func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
@@ -73,6 +77,9 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 			return nil, routes{}, err
 		}
 	}
+	if cfg.Site == nil {
+		cfg.Site = site.NewCache(pool)
+	}
 	tdb := tenant.NewDB(pool)
 	a := auth.New(pool, cfg.Jobs, cfg.PublicURL)
 	a.Layout = account.Layout
@@ -93,6 +100,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	platform.Routes(admr, pool)
 	blog.AdminRoutes(admr, pool)
 	media.AdminRoutes(admr, pool, cfg.Blob, cfg.Jobs)
+	site.AdminRoutes(admr, pool, cfg.Jobs)
 	adm.Handle("/", notFound)
 
 	// Everything that needs a signed-in user.
@@ -119,6 +127,8 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	mux := web.NewMux("root")
 	mux.Handle("GET /static/assets/", web.StaticHandler())
 	media.Routes(mux, cfg.Blob)
+	media.IconRoutes(mux, cfg.Blob)
+	site.Routes(mux, cfg.Site, cfg.Blob)
 	mux.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
@@ -138,6 +148,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	muxes := []*web.Mux{mux, open, signedIn, ws, adm}
 	var h http.Handler = mux
 	h = web.WithPath(h)
+	h = cfg.Site.Middleware(h)
 	h = assets.Middleware(h)
 	h = http.NewCrossOriginProtection().Handler(h)
 	h = web.SecureHeaders(cfg.ViteURL)(h)

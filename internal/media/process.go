@@ -20,10 +20,12 @@ import (
 
 const errUnreadable = "This image couldn’t be read. It may be damaged or cut off; try exporting it again."
 
-// AddWorkers adds the jobs that process and delete assets.
+// AddWorkers adds the jobs that process and delete assets, and the one that
+// draws the site icon.
 func AddWorkers(w *river.Workers, pool *pgxpool.Pool, store blob.Store) {
 	river.AddWorker(w, &processWorker{pool: pool, store: store})
 	river.AddWorker(w, &deleteWorker{store: store})
+	river.AddWorker(w, &iconWorker{pool: pool, store: store})
 }
 
 type processWorker struct {
