@@ -46,7 +46,8 @@ internal/markdown/    Markdown to HTML for posts: GFM, alerts, images from Media
 internal/chart/       line and column charts drawn as SVG on the server, with a table of the values
 internal/mail/        Sender (SMTP, log, dev outbox), the send job, Enqueue
 internal/blob/        Store: files by key on local disk (file://) or in an S3-compatible bucket (s3://)
-internal/media/       image uploads: Check, Create, Delete, the libvips job, /media/{key}/{file}, /admin/media
+internal/media/       image uploads: Check, Create, Delete, the libvips job, /media/{key}/{file}, /admin/media; the site icon's job and files
+internal/site/        site settings at /admin/site (the icon), kept in memory by Cache; /favicon.ico, /apple-touch-icon.png, the manifest
 internal/jobs/        River client
 internal/web/         Handle/Render/htmx helpers, middleware, Document/Layout/ShellLayout, form components, embedded dist/
 internal/slug/        URL slugs
@@ -130,6 +131,7 @@ Images uploaded at `/admin/media` (or pasted into the post editor), for the blog
 - To accept an upload: `media.Check(r)` before the transaction (a `*media.Rejected` error is a 422 with its message; `media.CheckData` takes bytes you already have), then `media.Create(ctx, tx, store, jc, userID, up)` inside it, and `media.Discard` if it doesn't commit. `media.Delete` removes an asset and queues the deletion of its files.
 - `Create` stores the original and queues `media_process` on the `media` queue. The job re-encodes it with libvips into WebP at `media.Widths` (never wider than the original) and an `og.jpg` social card, then marks the asset ready. `media.Process` does the same work directly, as the seed does. Only the JPEG, PNG, WebP, GIF and HEIF loaders of libvips may run.
 - An SVG never reaches libvips. `CheckData` and the job run it through the sanitizer in `svg.go`, an allowlist over `encoding/xml` tokens, and the job writes the result as `image.svg`, served with a CSP that has `sandbox`. Its width and height are the size it declares, and pages show the vector. It has no `widths`. With the `resvg` tag (`svg_resvg.go`; `svg_none.go` without it) the job also draws `og.jpg` from it with resvg, cropped around the centre, with text in the embedded DejaVu Sans (`fonts/`); if that fails, the asset is still ready, without a card. `assets.card` records whether an asset has `og.jpg`: a blog cover must have one (an SVG from the default build doesn't), and a post links it as `og:image` only when it does. Use `media.ImgAttrs`, `Thumb` and `Showable` rather than branching on the content type.
+- The site icon is chosen at `/admin/site` (`ManageSite`) and stored in `site_settings`, one row. Each change bumps `icon_rev` and queues `media_icon`, which draws `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png` and, for an SVG, `icon.svg` into `site/icon/{rev}/`, then makes that rev live. Pages link the live rev's files through `web.Document`. `site.Cache` keeps the settings in memory while `Listen` hears a trigger's `NOTIFY` on every change; without it, each page reads them.
 - An asset is named by its 8-character key, never its id. `media.URL(key)` (`/media/{key}`) is the address Markdown uses; `/media/{key}/{640.webp|og.jpg}` serves the files with a year-long cache, since a key's files never change. The original is never served: it keeps metadata such as where a photo was taken.
 
 ## Blog

@@ -44,6 +44,9 @@ type Config struct {
 	// SecretKey seals secrets the database holds, such as authenticator
 	// app keys. It is auth.KeySize bytes.
 	SecretKey []byte
+	// Site holds the site's settings, such as its icon. Nil uses one that
+	// reads them for each page; one whose Listen runs keeps them in memory.
+	Site *site.Cache
 }
 
 func New(cfg Config, pool *pgxpool.Pool) (http.Handler, error) {
@@ -73,6 +76,9 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 		if cfg.Jobs, err = jobs.New(pool, nil); err != nil {
 			return nil, routes{}, err
 		}
+	}
+	if cfg.Site == nil {
+		cfg.Site = site.NewCache(pool)
 	}
 	tdb := tenant.NewDB(pool)
 	a := auth.New(pool, cfg.Jobs, cfg.PublicURL)
@@ -121,6 +127,8 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	mux := web.NewMux("root")
 	mux.Handle("GET /static/assets/", web.StaticHandler())
 	media.Routes(mux, cfg.Blob)
+	media.IconRoutes(mux, cfg.Blob)
+	site.Routes(mux, cfg.Site, cfg.Blob)
 	mux.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := pool.Ping(r.Context()); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
@@ -140,6 +148,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	muxes := []*web.Mux{mux, open, signedIn, ws, adm}
 	var h http.Handler = mux
 	h = web.WithPath(h)
+	h = cfg.Site.Middleware(h)
 	h = assets.Middleware(h)
 	h = http.NewCrossOriginProtection().Handler(h)
 	h = web.SecureHeaders(cfg.ViteURL)(h)

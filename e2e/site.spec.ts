@@ -80,4 +80,13 @@ test("a superadmin sets the site icon", async ({ page }) => {
   await expect(page.getByText("Icon saved.")).toBeVisible();
   // The status polls until the job has drawn the files.
   await expect(page.getByText("Pages show this icon.")).toBeVisible({ timeout: 15_000 });
+
+  await page.goto("/blog");
+  const apple = page.locator('link[rel="apple-touch-icon"]');
+  await expect(apple).toHaveAttribute("href", /^\/site\/icon\/\d+\/apple-touch-icon\.png$/);
+  const favicon = await page.request.get("/favicon.ico");
+  expect(favicon.status()).toBe(200);
+  expect(favicon.headers()["content-type"]).toBe("image/x-icon");
+  const manifest = await (await page.request.get("/manifest.webmanifest")).json();
+  expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(["192x192", "512x512"]);
 });

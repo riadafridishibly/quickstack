@@ -15,5 +15,19 @@ CREATE TABLE site_settings (
 );
 INSERT INTO site_settings DEFAULT VALUES;
 
+-- Each server keeps the settings in memory and listens on site_settings
+-- for changes, including those made by deleting an asset.
+-- +goose StatementBegin
+CREATE FUNCTION notify_site_settings() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM pg_notify('site_settings', '');
+    RETURN NULL;
+END
+$$;
+-- +goose StatementEnd
+CREATE TRIGGER site_settings_changed AFTER UPDATE ON site_settings
+    FOR EACH ROW EXECUTE FUNCTION notify_site_settings();
+
 -- +goose Down
 DROP TABLE site_settings;
+DROP FUNCTION notify_site_settings();

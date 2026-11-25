@@ -9,8 +9,10 @@
 *     /account/
 *     /admin
 *     /admin/
+GET   /apple-touch-icon.png
 GET   /confirm
 POST  /confirm
+GET   /favicon.ico
 GET   /forgot-password
 POST  /forgot-password
 GET   /healthz
@@ -19,11 +21,13 @@ POST  /login
 GET   /login/verify
 POST  /login/verify
 POST  /logout
+GET   /manifest.webmanifest
 GET   /media/{key}/{file}
 GET   /reset-password
 POST  /reset-password
 GET   /signup
 POST  /signup
+GET   /site/icon/{rev}/{file}
 GET   /static/assets/
 GET   /verify-email
 POST  /verify-email

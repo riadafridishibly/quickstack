@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/blob"
 	"github.com/riadafridishibly/quickstack/internal/db"
 	"github.com/riadafridishibly/quickstack/internal/jobs"
+	"github.com/riadafridishibly/quickstack/internal/web"
 )
 
 // The site icon's files, drawn by the media_icon job into IconDir(rev).
@@ -46,6 +48,51 @@ const IconMinSize = 512
 
 // IconDir is the blob store prefix of the icon files drawn for rev.
 func IconDir(rev int32) string { return "site/icon/" + strconv.Itoa(int(rev)) + "/" }
+
+// IconURL is the path of one of the icon files drawn for rev. They are
+// served under it with a year-long cache, since a rev's files never change.
+func IconURL(rev int32, file string) string { return "/" + IconDir(rev) + file }
+
+// iconContentType is the content type of the icon file name, or "" if
+// there is no such file.
+func iconContentType(name string) string {
+	switch name {
+	case FaviconFile:
+		return "image/x-icon"
+	case IconSVGFile:
+		return svgContentType
+	case AppleIconFile:
+		return "image/png"
+	}
+	for _, size := range AppIconSizes {
+		if name == AppIconFile(size) {
+			return "image/png"
+		}
+	}
+	return ""
+}
+
+// ServeIconFile serves the icon file name drawn for rev, with
+// cacheControl, or returns web.ErrNotFound.
+func ServeIconFile(w http.ResponseWriter, r *http.Request, store blob.Store, rev int32, name, cacheControl string) error {
+	ct := iconContentType(name)
+	if ct == "" || rev <= 0 {
+		return web.ErrNotFound
+	}
+	return serveFile(w, r, store, IconDir(rev)+name, ct, cacheControl)
+}
+
+// IconRoutes serves the icon files at /site/icon/{rev}/{file}. Register it
+// outside the session middleware.
+func IconRoutes(mux *web.Mux, store blob.Store) {
+	mux.Get("/site/icon/{rev}/{file}", func(w http.ResponseWriter, r *http.Request) error {
+		rev, err := strconv.ParseInt(r.PathValue("rev"), 10, 32)
+		if err != nil || strconv.FormatInt(rev, 10) != r.PathValue("rev") {
+			return web.ErrNotFound
+		}
+		return ServeIconFile(w, r, store, int32(rev), r.PathValue("file"), immutable)
+	})
+}
 
 // DeleteIconFiles is the job that deletes the icon files drawn for rev.
 func DeleteIconFiles(rev int32) DeleteFilesArgs {
