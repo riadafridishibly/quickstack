@@ -127,6 +127,8 @@ const (
 	SignOutAccounts     PlatformAction = "sign_out_accounts"
 	ManagePlatformRoles PlatformAction = "manage_platform_roles"
 	ManageBlog          PlatformAction = "manage_blog"
+	// ManageSite covers the site's settings, such as its icon.
+	ManageSite PlatformAction = "manage_site"
 )
 
 // Platform is what each platform role may do in /admin.
@@ -136,6 +138,7 @@ var Platform = NewPolicy(PlatformRoles, map[PlatformAction][]PlatformRole{
 	SignOutAccounts:     {Superadmin, Support},
 	ManagePlatformRoles: {Superadmin},
 	ManageBlog:          {Superadmin, Editor},
+	ManageSite:          {Superadmin},
 }, func(ctx context.Context) PlatformRole {
 	if u := From(ctx); u != nil {
 		return u.PlatformRole

@@ -15,6 +15,7 @@ manage_workspace  yes    yes    -       -
 action                 superadmin  support  editor
 manage_blog            yes         -        yes
 manage_platform_roles  yes         -        -
+manage_site            yes         -        -
 open_admin             yes         yes      yes
 sign_out_accounts      yes         yes      -
 view_accounts          yes         yes      -
