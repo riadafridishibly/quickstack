@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	vips "github.com/cshum/vipsgen/vips816"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +46,11 @@ const IconMinSize = 512
 
 // IconDir is the blob store prefix of the icon files drawn for rev.
 func IconDir(rev int32) string { return "site/icon/" + strconv.Itoa(int(rev)) + "/" }
+
+// DeleteIconFiles is the job that deletes the icon files drawn for rev.
+func DeleteIconFiles(rev int32) DeleteFilesArgs {
+	return DeleteFilesArgs{Key: strings.TrimSuffix(IconDir(rev), "/")}
+}
 
 // IconProblem says why a can't be the site's icon, or returns "" if it can.
 func IconProblem(a db.Asset) string {

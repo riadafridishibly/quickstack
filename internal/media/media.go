@@ -200,7 +200,8 @@ func (ProcessArgs) InsertOpts() river.InsertOpts {
 	return river.InsertOpts{Queue: jobs.QueueMedia, MaxAttempts: 5}
 }
 
-// DeleteFilesArgs deletes the files of a deleted asset.
+// DeleteFilesArgs deletes the files under Key/: those of a deleted asset,
+// or of a site icon that was replaced.
 type DeleteFilesArgs struct {
 	Key string `json:"key"`
 }

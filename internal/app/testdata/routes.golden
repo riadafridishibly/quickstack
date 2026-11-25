@@ -110,5 +110,7 @@ POST  /admin/media                   manage_blog
 GET   /admin/media/{key}             manage_blog
 POST  /admin/media/{key}             manage_blog
 POST  /admin/media/{key}/delete      manage_blog
+GET   /admin/site                    manage_site
+POST  /admin/site/icon               manage_site
 GET   /admin/workspaces              view_accounts
 GET   /admin/workspaces/{id}         view_accounts

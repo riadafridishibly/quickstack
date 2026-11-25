@@ -22,6 +22,7 @@ import (
 	"github.com/riadafridishibly/quickstack/internal/platform"
 	"github.com/riadafridishibly/quickstack/internal/projects"
 	"github.com/riadafridishibly/quickstack/internal/public"
+	"github.com/riadafridishibly/quickstack/internal/site"
 	"github.com/riadafridishibly/quickstack/internal/tenant"
 	"github.com/riadafridishibly/quickstack/internal/web"
 	"github.com/riadafridishibly/quickstack/internal/workspaces"
@@ -93,6 +94,7 @@ func build(cfg Config, pool *pgxpool.Pool) (http.Handler, routes, error) {
 	platform.Routes(admr, pool)
 	blog.AdminRoutes(admr, pool)
 	media.AdminRoutes(admr, pool, cfg.Blob, cfg.Jobs)
+	site.AdminRoutes(admr, pool, cfg.Jobs)
 	adm.Handle("/", notFound)
 
 	// Everything that needs a signed-in user.
